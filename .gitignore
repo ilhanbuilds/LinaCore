@@ -41,6 +41,7 @@ desktop.ini
 *.crt
 credentials*
 secrets*
+!src/lina_core/security/secrets.py
 auth.json
 # Logs and runtime
 logs/
@@ -49,6 +50,8 @@ cache/
 tmp/
 temp/
 runtime/
+!src/lina_core/runtime/
+!src/lina_core/runtime/*.py
 *.pid
 # Models, weights, checkpoints and data
 weights/
@@ -81,4 +84,3 @@ tensorboard/
 *.sqlite3
 *.prof
 *.lprof
-
