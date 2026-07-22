@@ -1,5 +1,6 @@
 [inference]
 model_id = "mock"
+backend = "mock"
 stream = true
 max_new_tokens = 128
 temperature = 0.7
@@ -9,3 +10,5 @@ seed = 42
 stop = ["<stop>"]
 repetition_penalty = 1.0
 
+# Gerçek local model kullanımı için model root altındaki doğrulanmış manifestte
+# backend = "transformers" seçilir. Remote download ve remote code varsayılan olarak kapalıdır.

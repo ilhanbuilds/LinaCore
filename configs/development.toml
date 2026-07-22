@@ -19,3 +19,37 @@ datasets = "datasets"
 reports = "reports"
 logs = "logs"
 
+[runtime]
+default_backend = "mock"
+model_root = "models"
+lazy_load = true
+max_concurrent_requests = 1
+request_timeout_seconds = 120.0
+shutdown_timeout_seconds = 10.0
+
+[backend.transformers]
+enabled = false
+local_files_only = true
+allow_remote_downloads = false
+trust_remote_code = false
+device = "auto"
+dtype = "auto"
+quantization = "none"
+low_cpu_mem_usage = true
+use_safetensors = true
+streaming = true
+
+[generation]
+max_new_tokens = 256
+temperature = 0.7
+top_p = 0.95
+top_k = 40
+repetition_penalty = 1.0
+max_context_policy = "error"
+truncation_policy = "error"
+
+[security]
+allowed_model_roots = ["models"]
+allow_symlinks = false
+max_model_manifest_size = 262144
+remote_model_policy = "deny"
