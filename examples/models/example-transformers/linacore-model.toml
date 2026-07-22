@@ -1,0 +1,21 @@
+[model]
+schema_version = 1
+model_id = "example-transformers"
+display_name = "Örnek Transformers Modeli"
+version = "0"
+backend = "transformers"
+architecture = "example-causal-lm"
+model_path = "./placeholder-model-files"
+source = "example-only"
+license = "Lisans kullanıcı tarafından doğrulanmalıdır"
+context_length = 2048
+default_device = "auto"
+default_dtype = "auto"
+quantization = "none"
+capabilities = ["text_generation", "chat", "streaming"]
+chat_template_policy = "required"
+trust_remote_code = false
+local_files_only = true
+example = true
+notes = "Bu manifest gerçek model veya ağırlık içermez."
+

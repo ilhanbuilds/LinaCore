@@ -68,6 +68,8 @@ checkpoints/*
 !checkpoints/README.md
 models/*
 !models/README.md
+!examples/models/
+!examples/models/**
 datasets/raw/
 datasets/private/
 datasets/processed/
