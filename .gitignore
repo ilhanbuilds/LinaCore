@@ -52,6 +52,8 @@ temp/
 runtime/
 !src/lina_core/runtime/
 !src/lina_core/runtime/*.py
+!tests/unit/runtime/
+!tests/unit/runtime/*.py
 *.pid
 # Models, weights, checkpoints and data
 weights/
