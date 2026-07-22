@@ -63,8 +63,25 @@ class TransformersConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LlamaCppConfig:
+    enabled: bool = False
+    context_length: int = 2048
+    threads: int | None = None
+    gpu_layers: int = 0
+
+    def __post_init__(self) -> None:
+        if self.context_length <= 0:
+            raise ConfigurationError("llama.cpp context length pozitif olmalıdır.")
+        if self.threads is not None and self.threads <= 0:
+            raise ConfigurationError("llama.cpp thread sayısı pozitif olmalıdır.")
+        if self.gpu_layers < 0:
+            raise ConfigurationError("llama.cpp GPU layer sayısı negatif olamaz.")
+
+
+@dataclass(frozen=True, slots=True)
 class BackendConfig:
     transformers: TransformersConfig = field(default_factory=TransformersConfig)
+    llama_cpp: LlamaCppConfig = field(default_factory=LlamaCppConfig)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +167,7 @@ def load_config(path: Path | None = None, *, environ: dict[str, str] | None = No
     raw_runtime = data.pop("runtime", {})
     raw_backend = data.pop("backend", {})
     raw_transformers = raw_backend.pop("transformers", {})
+    raw_llama_cpp = raw_backend.pop("llama_cpp", {})
     if raw_backend:
         raise ConfigurationError(f"Bilinmeyen backend alanları: {', '.join(sorted(raw_backend))}")
     raw_generation = data.pop("generation", {})
@@ -168,7 +186,10 @@ def load_config(path: Path | None = None, *, environ: dict[str, str] | None = No
             "limits": _checked(ResourceLimits, raw_limits),
             "directories": _checked(DirectoryConfig, raw_dirs),
             "runtime": _checked(RuntimeConfig, raw_runtime),
-            "backend": BackendConfig(_checked(TransformersConfig, raw_transformers)),
+            "backend": BackendConfig(
+                _checked(TransformersConfig, raw_transformers),
+                _checked(LlamaCppConfig, raw_llama_cpp),
+            ),
             "generation": _checked(GenerationConfig, raw_generation),
             "security": _checked(
                 SecurityConfig,

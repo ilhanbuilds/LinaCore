@@ -39,6 +39,8 @@ def load_model_manifest(
             tokenizer_path = safe_resolve(resolved_manifest.parent, manifest.tokenizer_path)
             if tokenizer_path != root and root not in tokenizer_path.parents:
                 raise ConfigurationError("Tokenizer yolu model root dışına çıkıyor.")
+        if manifest.backend == "llama.cpp" and model_path.suffix.casefold() != ".gguf":
+            raise ConfigurationError("llama.cpp manifesti .gguf model dosyasına işaret etmelidir.")
         if manifest.example:
             return ModelValidation(
                 True, "example", manifest, model_path, ("Bu bir örnek manifesttir.",)

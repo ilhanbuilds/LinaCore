@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
+from lina_core.backends.llama_cpp.availability import llama_cpp_availability
 from lina_core.backends.transformers.availability import transformers_availability
 from lina_core.core.version import __version__
 from lina_core.diagnostics.hardware import detect_devices
@@ -26,11 +27,14 @@ def environment_report(model_root: Path) -> dict[str, Any]:
         except PackageNotFoundError:
             packages[package] = None
     availability = transformers_availability()
+    llama_availability = llama_cpp_availability()
     devices = detect_devices()
     discovery = discover_models(model_root)
     warnings = list(availability.warnings)
     if not availability.available:
         warnings.append(availability.reason)
+    if not llama_availability.available:
+        warnings.append(llama_availability.reason)
     return {
         "linacore_version": __version__,
         "python_version": platform.python_version(),
@@ -38,6 +42,7 @@ def environment_report(model_root: Path) -> dict[str, Any]:
         "architecture": platform.machine(),
         "packages": packages,
         "transformers_available": availability.available,
+        "llama_cpp_available": llama_availability.available,
         "torch_available": importlib.util.find_spec("torch") is not None,
         "cuda_available": any(item.device_type.value == "cuda" for item in devices),
         "devices": [item.identifier for item in devices],

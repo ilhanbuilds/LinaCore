@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from lina_core.backends.llama_cpp.availability import llama_cpp_availability
 from lina_core.backends.transformers.availability import transformers_availability
 from lina_core.core.config import load_config
 from lina_core.core.exceptions import LinaCoreError
@@ -198,6 +199,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any] | str:
         return report if args.as_json else diagnostics_text(report)
     if args.command == "backends":
         availability = transformers_availability()
+        llama_availability = llama_cpp_availability()
         return {
             "backends": [
                 {
@@ -209,7 +211,18 @@ def _execute(args: argparse.Namespace) -> dict[str, Any] | str:
                     "supported_devices": [
                         item.identifier for item in availability.supported_devices
                     ],
-                }
+                },
+                {
+                    "backend_id": llama_availability.backend_id,
+                    "available": llama_availability.available,
+                    "version": llama_availability.detected_version,
+                    "missing_packages": llama_availability.missing_packages,
+                    "reason": llama_availability.reason,
+                    "supported_devices": [
+                        item.identifier for item in llama_availability.supported_devices
+                    ],
+                    "warnings": llama_availability.warnings,
+                },
             ]
         }
     if args.command == "devices":
