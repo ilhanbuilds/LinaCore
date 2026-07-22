@@ -1,6 +1,6 @@
 # Evaluation
 
-The runner accepts typed samples and uses the runtime contract. Foundation metrics are exact match, normalized exact match, contains-expected, response length and deterministic repeatability; latency is captured for the run. JSON reports are workspace-contained and size bounded.
+Runner typed sample’ları runtime sözleşmesi üzerinden değerlendirir. Foundation metric’leri exact match, normalized exact match, contains-expected, response length ve deterministic repeatability’dir; run latency kaydedilir. JSON raporları workspace-contained ve boyut sınırlıdır.
 
-Mock results prove orchestration only. They are not generalization, language quality, safety, throughput or hardware benchmarks. Future suites need versioned datasets, statistical aggregation and human review.
+Mock sonuçları yalnızca orchestration doğrular ve model kalite benchmark’ı değildir. Gerçek benchmark sözleşmesi gerçek yüklü model gerektirir. Gelecekte versioned dataset, istatistiksel aggregation, safety ölçümleri ve human review gerekir.
 

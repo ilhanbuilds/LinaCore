@@ -1,5 +1,7 @@
-# Development
+# Geliştirme
 
-Create a Python 3.11+ virtual environment and install `.[dev]`. Run `pytest`, `ruff check .`, `mypy src/lina_core`, `compileall`, `pip check` and `build` before publishing. Keep modules focused, public boundaries typed and platform assumptions explicit.
+Python 3.11+ virtual environment oluşturun. Temel paket ağır ML dependency içermez; development için `.[dev]`, adapter geliştirme için `.[inference-transformers,inference-torch]` kurun.
 
-Use conventional, focused commits (`feat:`, `fix:`, `test:`, `docs:`, `chore:`). Do not commit environment files, credentials, user data, models, checkpoints, reports or logs. New dependencies need a concrete justification and must not make GPU or Docker mandatory.
+Her değişiklikte `pytest`, `pytest -m "not model_integration"`, `ruff check .`, `mypy src/lina_core`, `compileall`, `pip check` ve `build` çalıştırın. Provider conformance suite yeni backend’lerde tekrar kullanılmalıdır. Gerçek model testleri `model_integration` marker’ıyla işaretlenir ve varsayılan ortamda skip edilir.
+
+Identifier, kaynak dosya ve commit mesajları İngilizce; README/docs ve CLI kullanıcı mesajları Türkçedir. Conventional Commits kullanın. Secret, kullanıcı verisi, model ağırlığı, checkpoint, generated report ve log commit etmeyin. Yeni dependency somut gerekçe gerektirir.

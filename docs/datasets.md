@@ -1,6 +1,6 @@
-# Datasets
+# Dataset’ler
 
-A manifest identifies dataset/version/split, count, language, license, SHA-256 checksum and source. Records require stable IDs, output, source and language; optional instruction/input/messages and limited metadata support common supervised formats.
+Manifest; dataset/version/split, kayıt sayısı, dil, lisans, SHA-256 checksum ve kaynak bilgisi taşır. Kayıtlar stable ID, output, source ve language gerektirir; instruction/input/messages ve sınırlı metadata isteğe bağlıdır.
 
-Validation rejects empty output, duplicates, invalid languages, excessive size, private indicators and common secret patterns. Text preprocessing uses NFC normalization and whitespace cleanup; fingerprints support duplicate detection. Data owners must establish license, consent, provenance, personal-data removal and retention policy. Repository ignore rules exclude actual data.
+Validation boş output, duplicate, geçersiz dil, aşırı boyut, private indicator ve yaygın secret biçimlerini reddeder. NFC normalization, whitespace cleanup ve fingerprint temeli bulunur. Gerçek veri repository’ye eklenmez; lisans, consent, provenance, kişisel veri temizliği ve retention kararı veri sahibinin sorumluluğundadır.
 

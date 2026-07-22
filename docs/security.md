@@ -1,6 +1,8 @@
 # Security
 
-Threat boundaries include untrusted configuration, prompts, dataset records, filenames, provider output and local artifacts. Path resolution rejects absolute paths by default, traversal, symlink escapes and Windows reserved names. Resource limits bound messages, characters, output tokens, files, records, reports and stream events.
+Güven sınırları untrusted config, prompt, manifest, dataset record, filename, provider output ve local artefaktları kapsar. Path resolver absolute path’i varsayılan olarak reddeder; traversal, symlink escape ve Windows reserved name kontrolleri uygular.
 
-Secret detection covers common API-key, bearer, password, credential and private-key forms while avoiding broad rejection of ordinary technical prose. Logging redacts sensitive assignments. These controls reduce accidental exposure but do not replace OS permissions, sandboxing, malware scanning or a security review.
+Transformers adapter varsayılan olarak `local_files_only=true`, `trust_remote_code=false` ve remote download kapalı çalışır. Manifest model root dışına çıkamaz; unknown field, unsafe capability, malformed checksum ve unsafe remote policy reddedilir. Resource limitleri message, prompt, output, config, manifest, report ve stream event boyutlarını sınırlar.
+
+Secret detection yaygın API key, bearer, password, credential ve private-key biçimlerini hedefler; logging redaction uygular. Diagnostics yalnızca allowlist environment variable isimlerinin set durumunu gösterir, değerlerini göstermez. Bu önlemler OS sandbox ve bağımsız security review yerine geçmez.
 

@@ -1,86 +1,120 @@
 # LinaCore
 
-LinaCore is the local, provider-independent AI core planned for the Lina desktop application. This `0.1.0a0` release establishes a small, typed and testable Python foundation; it does **not** contain or claim a real language model.
+LinaCore, Lina masaüstü uygulaması için geliştirilen bağımsız ve yerel yapay zekâ çekirdeğidir. `0.2.0a0` sürümü, güvenli local model discovery ve optional Transformers adapter’ı üzerinden ilk gerçek yerel inference yolunu sağlar. Projede model ağırlığı veya veri seti bulunmaz.
 
-## Purpose and relationship to Lina
+## Amaç ve mevcut durum
 
-Lina Desktop owns the user experience, device integration, history and preferences. LinaCore owns model/tokenizer contracts, inference, streaming, loading, future training and evaluation, safety boundaries and a local protocol. The projects are deliberately decoupled: LinaCore has its own CLI, configuration, tests and documentation. A future local protocol will connect them without making Ollama a required dependency.
+Lina Desktop arayüz, cihaz entegrasyonu, geçmiş ve kullanıcı ayarlarından; LinaCore ise model/tokenizer sözleşmeleri, inference, streaming, model yükleme, değerlendirme ve güvenlik sınırlarından sorumludur. Projeler gelecekte local protocol ile bağlanacak, fakat birbirlerine veya Ollama’ya zorunlu olarak bağımlı olmayacaktır.
 
-## Current status and features
+v0.2.0-alpha kapsamında mock provider korunmuş; backend abstraction, local-only Transformers adapter, model manifest/discovery, device ve dtype seçimi, prompt/context yönetimi, cancellation, diagnostics ve benchmark sözleşmesi eklenmiştir. Gerçek model çalıştırmak için kullanıcı kendi modelini ve lisans uygunluğunu sağlamalıdır.
 
-The foundation includes immutable TOML configuration, environment overrides, lifecycle and logging, provider registries, deterministic mock inference and streaming, dataset validation, training dry-run, lightweight evaluation, bounded reports, security controls, an in-process serving adapter and a JSON CLI. The mock provider exists only to test architecture and makes no AI-quality claim.
+## Gereksinimler ve kurulum
 
-## Architecture and project structure
-
-`src/lina_core` is split into `core`, `runtime`, `inference`, `models`, `tokenizer`, `datasets`, `training`, `evaluation`, `serving` and `security`. Business logic does not depend on a transport or Lina Desktop. See [architecture](docs/architecture.md).
-
-## Requirements and installation
-
-Python 3.11 or newer is required. No GPU, Docker, Ollama or runtime dependency is required.
+Python 3.11 veya üzeri gerekir. Temel kurulum GPU, Torch, Transformers, Docker ya da Ollama indirmez:
 
 ```console
 python -m venv .venv
 .venv\Scripts\activate
+python -m pip install -e .
+```
+
+Transformers tabanlı gerçek inference için optional grupları ayrıca kurun:
+
+```console
+python -m pip install -e ".[inference-transformers,inference-torch]"
+```
+
+Geliştirme araçları:
+
+```console
 python -m pip install -e ".[dev]"
 ```
 
-## Development environment and testing
+## Model ağırlıkları ve manifest
 
-```console
-python -m pytest
-python -m ruff check .
-python -m mypy src/lina_core
-python -m build
-```
+Model ağırlıkları Git’e eklenmez. Her model, yapılandırılmış `models/` root’u altında bir `linacore-model.toml` manifestiyle tanımlanır. Manifest model kimliği, backend, göreli model yolu, lisans, context sınırı, dtype/device politikası, capability ve isteğe bağlı SHA-256 checksum bilgilerini taşır.
 
-## CLI usage
+[Örnek manifest](examples/models/example-transformers/linacore-model.toml) yalnızca biçimi gösterir; gerçek veya kullanılabilir bir model değildir. Her modelin lisansını, kaynağını ve kullanım koşullarını ayrıca inceleyin.
+
+## Discovery ve güvenlik varsayılanları
+
+Discovery yalnızca yapılandırılmış model root’u içinde manifest arar; ağırlık yüklemez, inference başlatmaz ve ağ erişimi yapmaz. Varsayılanlar:
+
+- `local_files_only=true`
+- `trust_remote_code=false`
+- remote download kapalı
+- path traversal ve symlink escape reddedilir
+- unknown manifest/config alanları reddedilir
+- unsupported capability, dtype ve quantization kontrollü hata üretir
+
+## Device ve dtype
+
+`auto`, `cpu`, `cuda` ve `cuda:N` politikaları desteklenir; MPS yalnızca platform sağlıyorsa raporlanır. CPU güvenli fallback’tir. CPU üzerinde `float16` sessizce uygulanmaz. `int8` ve `int4` typed foundation olarak tanımlıdır, ancak bu sürümde quantization dependency’si zorunlu değildir ve destek yoksa açık hata döner.
+
+## CLI
 
 ```console
 lina-core version
 lina-core health
-lina-core config validate configs/development.toml
+lina-core diagnostics
+lina-core diagnostics --json
+lina-core backends list
+lina-core devices list
+lina-core models discover
 lina-core models list
+lina-core models validate <model-id-or-manifest>
 lina-core runtime smoke
-lina-core dataset validate path/to/manifest.json
-lina-core training dry-run configs/training.example.toml
-lina-core evaluation run configs/evaluation.example.toml
+lina-core runtime load <model-id>
+lina-core inference generate --model <model-id> --prompt "Merhaba" --max-new-tokens 32
+lina-core inference stream --model <model-id> --prompt "Merhaba"
 ```
 
-`runtime start` explicitly reports that a persistent network service is not implemented. `runtime smoke` loads the mock provider, performs deterministic inference and shuts down cleanly.
+CLI argümanı olarak verilen prompt shell history içinde kalabilir. Hassas veri için prompt argümanı kullanmayın. Kalıcı runtime/network service bu sürümün kapsamında değildir; `runtime load` yalnızca komut süresince yükleme doğrulaması yapar.
 
-## Configuration
+## Generation, streaming ve cancellation
 
-Defaults are safe for local development. TOML fields are typed and unknown fields fail closed. Only `LINA_CORE_LOG_LEVEL`, `LINA_CORE_PROVIDER` and `LINA_CORE_TOKENIZER` are recognized as basic environment overrides. Secrets do not belong in project configuration. See [configuration](docs/configuration.md).
+Generation seçenekleri backend’e kontrollü biçimde eşlenir. `temperature=0` greedy çalışır; seed Python, NumPy mevcutsa NumPy ve Torch’a uygulanır. Token usage tokenizer sonucundan, latency monotonic saatten hesaplanır. Streaming sırası `started → token* → completed/cancelled/error` şeklindedir. Request bazlı cancellation ve shutdown sırasında toplu iptal runtime API’sinde bulunur.
 
-## Models and tokenizer
+## Diagnostics ve benchmark
 
-There is no real model yet. The built-in mock model and reversible UTF-8 byte tokenizer validate contracts only. Model weights are never stored in Git. Future model licenses and weights are not automatically covered by this repository's license.
+Diagnostics; LinaCore/Python sürümü, işletim sistemi, mimari, optional package durumu, device’lar, model sayısı, yazma izni ve güvenlik varsayılanlarını raporlar. Secret veya environment variable değeri göstermez.
 
-## Datasets
+Benchmark sözleşmesi load time, first-token latency, total latency, token sayıları, tokens/s ve optional memory alanlarını tanımlar. Mock sonuçları gerçek benchmark sayılmaz; CLI benchmark komutu yüklü gerçek model yoksa kontrollü hata verir.
 
-No training dataset is included or downloaded. Dataset content is ignored by Git and requires provenance, license, privacy review, cleanup, validation and a checksummed manifest. See [datasets](docs/datasets.md).
+## Test ve geliştirme
 
-## Training
+```console
+python -m pytest
+python -m pytest -m "not model_integration"
+python -m ruff check .
+python -m mypy src/lina_core
+python -m compileall -q src
+python -m build
+```
 
-Training is dry-run only in this release: it validates configuration, manifest and bounded output paths and emits an environment report. It never starts a training loop or creates a checkpoint. See [training](docs/training.md).
+Gerçek model entegrasyon testi `model_integration` marker’ı altındadır ve kullanıcı model yolu/optional dependency sağlamadıkça skip edilir.
 
-## Evaluation
+## Mimari belgeler
 
-Evaluation supports plumbing-level deterministic metrics and bounded JSON reports against the mock provider. Results are not quality benchmarks. See [evaluation](docs/evaluation.md).
+- [Mimari](docs/architecture.md)
+- [Backend’ler](docs/backends.md)
+- [Modeller](docs/models.md)
+- [Inference](docs/inference.md)
+- [Donanım](docs/hardware.md)
+- [Runtime](docs/runtime.md)
+- [Configuration](docs/configuration.md)
+- [Security](docs/security.md)
+- [Dataset](docs/datasets.md)
+- [Training](docs/training.md)
+- [Evaluation](docs/evaluation.md)
+- [Model yol haritası](docs/model-roadmap.md)
+- [Geliştirme](docs/development.md)
 
-## Security and privacy
+## Bilinen sınırlamalar ve yol haritası
 
-Workspace containment, traversal/symlink escape checks, resource limits, conservative secret detection and log redaction form the initial boundary. This is defense in depth, not a complete sandbox. See [security](docs/security.md).
+Bu sprintte repository içinde gerçek model, production server, Lina Desktop entegrasyonu, fine-tuning, vision, embeddings, tool calling ve hazır quantization yoktur. Transformers adapter gerçek local model için hazırlanmıştır; fakat bu release doğrulamasında model ağırlığı çalıştırılmamıştır. Sonraki aşamalar GGUF/llama.cpp adapter’ı, küçük local model uyumluluk matrisi, Türkçe değerlendirme ve reproducible fine-tuning araştırmasıdır.
 
-## Roadmap and known limitations
+## Lisans
 
-The next stages are an openly licensed baseline adapter, tokenizer research, licensed Turkish data preparation, reproducible fine-tuning, evaluation, quantization and ultimately a standalone Lina model. Today there is no real model, HTTP/IPC server, training loop, model download or production security guarantee. See [model roadmap](docs/model-roadmap.md).
-
-## Contributing
-
-Use focused changes, type annotations and tests. Run format/lint/type/test/build checks before committing. Never commit secrets, user data, weights, checkpoints, generated reports or logs. See [development](docs/development.md).
-
-## License
-
-Code is licensed under the MIT License. Any future models and datasets require separate license review; model weights do not automatically fall under MIT.
+Kod MIT lisanslıdır. Model, tokenizer ve veri setlerinin lisansları bağımsızdır; bir model ağırlığı LinaCore ile kullanıldığı için otomatik olarak MIT kapsamına girmez.
 

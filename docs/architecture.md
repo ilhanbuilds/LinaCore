@@ -1,6 +1,8 @@
-# Architecture
+# Mimari
 
-Dependencies point inward: CLI/scripts and future transports call application services; services use domain contracts; providers implement those contracts. `core` and `security` are shared foundations and must not import Desktop or transport code.
+Bağımlılıklar dış katmanlardan iç sözleşmelere doğru ilerler. CLI, diagnostics ve gelecekteki transport adapter’ları application service’lerini çağırır; runtime model/tokenizer provider sözleşmelerine dayanır. Backend adapter’ları optional framework ayrıntılarını izole eder. `core` ve `security`, Lina Desktop veya belirli bir backend import etmez.
 
-The runtime owns lifecycle, provider registries and active model/tokenizer selection. Inference request/response/stream event objects are transport-neutral. Models and tokenizers implement abstract interfaces; the mock implementations validate wiring only. Serving maps controlled results to typed API responses and never exposes raw exceptions. Dataset validation feeds future training and evaluation, while training remains an orchestration boundary rather than a framework choice. Evaluation consumes runtime contracts and writes bounded local reports. Security applies at path, input, resource and logging boundaries.
+Runtime lifecycle, provider registry, aktif model/tokenizer, cancellation ve resource sayaçlarını yönetir. Inference request/response/stream event modelleri transport bağımsızdır. Prompt ve context budgeting provider içine gömülmez. Model discovery yalnızca manifest okur; ağırlık yükleme lazy olarak açık runtime komutunda gerçekleşir.
+
+Transformers ilk gerçek adapter’dır; sözleşme gelecekte llama.cpp, GGUF, ONNX Runtime, DirectML, CUDA/CPU ve özel Lina runtime implementasyonlarına açıktır. Serving katmanı raw exception döndürmez.
 

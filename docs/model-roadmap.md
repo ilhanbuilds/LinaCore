@@ -1,11 +1,13 @@
-# Model roadmap
+# Model yol haritası
 
-1. Stabilize deterministic mock contracts.
-2. Add an openly licensed baseline model adapter without coupling the runtime.
-3. Research Turkish-aware tokenizer trade-offs.
-4. Establish licensed, privacy-reviewed Turkish dataset governance.
-5. Add reproducible fine-tuning and checkpoint metadata.
-6. Build versioned automatic and human evaluation.
-7. Evaluate quantization and local hardware targets.
-8. Develop and ship a standalone Lina model under independently reviewed licenses.
+1. Mock ve provider conformance sözleşmelerini kararlı tutmak.
+2. Kullanıcı tarafından sağlanan küçük, açık lisanslı local model uyumluluk testleri yapmak.
+3. llama.cpp/GGUF backend’i ve ölçülü quantization desteği eklemek.
+4. Türkçe tokenizer ve dataset lisans/provenance araştırması yürütmek.
+5. Versioned Türkçe automatic/human evaluation oluşturmak.
+6. Reproducible fine-tuning ve checkpoint politikası eklemek.
+7. DirectML/ONNX ve farklı local donanım hedeflerini değerlendirmek.
+8. Özel tokenizer araştırmasıyla standalone Lina modeline ilerlemek.
+
+Her model ve dataset lisansı ayrı incelenir; açık ağırlık erişimi tek başına kullanım uygunluğu anlamına gelmez.
 
