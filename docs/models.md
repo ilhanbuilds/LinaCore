@@ -4,3 +4,4 @@ Her local model `<model-root>/<model>/linacore-model.toml` yapısında tutulur. 
 
 Discovery yalnız configured root altında manifest arar; model yüklemez veya ağırlık okumaz. Duplicate ID ve invalid manifest ayrı raporlanır. Model yolu root dışına çıkamaz. Örnek manifest `example=true` olduğu için gerçek model olarak yüklenmez. Kullanıcı her modelin lisansını ve checksum/provenance bilgisini ayrıca doğrulamalıdır.
 
+Transformers manifesti bir local model dizinine, llama.cpp manifesti tek bir `.gguf` dosyasına işaret eder. GGUF uzantısı discovery sırasında doğrulanır; ağırlığın gerçek format/geçerlilik kontrolü gelecekteki engine adapter’ına aittir. Repository yalnız örnek manifest taşır, model ağırlığı taşımaz.
