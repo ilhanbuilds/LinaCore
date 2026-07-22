@@ -14,6 +14,10 @@ def provider_from_manifest(path: Path, model_root: Path) -> TransformersModelPro
     manifest = validation.manifest
     if manifest.example:
         raise ModelLoadError("Örnek manifest gerçek model olarak yüklenemez.")
+    if manifest.backend != "transformers":
+        raise ModelLoadError(
+            "Bu helper yalnız Transformers provider oluşturur; GGUF foundation henüz yüklenemez."
+        )
     tokenizer_path = (
         str(safe_resolve(path.parent.resolve(), manifest.tokenizer_path))
         if manifest.tokenizer_path

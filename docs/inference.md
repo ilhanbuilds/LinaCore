@@ -6,3 +6,6 @@ Context budgeting prompt/output/reserved token sayılarını raporlar. Varsayıl
 
 Generation greedy/sampling ayrımını açıkça yapar, seed uygular, stop sequence işler, token usage ve latency ölçer. Streaming `started`, sıralı token event’leri ve tek terminal event üretir. Cancellation request ID ile thread-safe yönetilir; backend worker hataları raw exception olarak dışarı çıkmaz.
 
+`Lina-135M-SFT-v0.1` local manifesti mevcutsa aynı Transformers yolu üzerinden yüklenir.
+Deterministik değerlendirme `temperature=0` ve `seed=42` kullanır; demo sampling sonucu test
+kanıtı olarak sunulmaz.

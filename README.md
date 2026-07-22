@@ -1,16 +1,49 @@
 # LinaCore
 
-LinaCore, Lina masaüstü uygulaması için geliştirilen bağımsız ve yerel yapay zekâ çekirdeğidir. `0.2.0a0` sürümü, güvenli local model discovery ve optional Transformers adapter’ı üzerinden ilk gerçek yerel inference yolunu sağlar. Projede model ağırlığı veya veri seti bulunmaz.
+**Yerel, provider-bağımsız ve güvenli yapay zekâ çalışma zamanı temeli.**
 
-## Amaç ve mevcut durum
+LinaCore; model keşfi, yükleme, metin üretimi, streaming, iptal, sağlık ve kaynak
+raporlama için typed sözleşmeler sunar. Temel kurulum ağır ML paketleri indirmez; gerçek
+backend’ler isteğe bağlıdır. Projede model ağırlığı, cache veya veri seti bulunmaz.
 
-Lina Desktop arayüz, cihaz entegrasyonu, geçmiş ve kullanıcı ayarlarından; LinaCore ise model/tokenizer sözleşmeleri, inference, streaming, model yükleme, değerlendirme ve güvenlik sınırlarından sorumludur. Projeler gelecekte local protocol ile bağlanacak, fakat birbirlerine veya Ollama’ya zorunlu olarak bağımlı olmayacaktır.
+> **Proje durumu:** Transformers local inference ve ilk Lina-specific SFT pipeline’ı
+> çalışmaktadır. `Lina-135M-SFT-v0.1`, SmolLM2-135M üzerine küçük sentetik veriyle eğitilmiş
+> deneysel bir türevdir; sıfırdan pretrained bir Lina foundation modeli değildir. GGUF export
+> sözleşmesi hazır, gerçek export ve llama.cpp doğrulaması ise henüz tamamlanmamıştır.
 
-v0.2.0-alpha kapsamında mock provider korunmuş; backend abstraction, local-only Transformers adapter, model manifest/discovery, device ve dtype seçimi, prompt/context yönetimi, cancellation, diagnostics ve benchmark sözleşmesi eklenmiştir. Gerçek model çalıştırmak için kullanıcı kendi modelini ve lisans uygunluğunu sağlamalıdır.
+## Öne çıkanlar
 
-## Gereksinimler ve kurulum
+- Tek `InferenceBackend` sınırı üzerinden mock, Transformers ve llama.cpp foundation
+- Güvenli, local-only model manifesti ve discovery; path traversal/symlink escape koruması
+- Generation, streaming, cancellation, stop sequence, context budget ve typed hata modeli
+- Optional dependency, cihaz, dtype, sağlık ve kaynak diagnostics
+- İnternet/model gerektirmeyen varsayılan testler; gerçek model için ayrı manual integration
+- Strict Türkçe SFT dataset’i, deterministik split/fingerprint ve atomik model artifact üretimi
+- Base/fine-tuned davranış karşılaştırması, model card ve compatibility raporu
+- Hafif çekirdek: temel `lina-core` paketinin runtime dependency’si yoktur
 
-Python 3.11 veya üzeri gerekir. Temel kurulum GPU, Torch, Transformers, Docker ya da Ollama indirmez:
+## Mimari
+
+```text
+CLI / gelecekteki local protocol
+             │
+     runtime ve typed modeller
+             │
+       InferenceBackend
+       ├── MockProvider
+       ├── TransformersBackend     (gerçek local inference)
+       └── LlamaCppBackend         (mock destekli foundation)
+             │
+     manifest / discovery / security
+```
+
+Lina Desktop; arayüz, cihaz entegrasyonu, geçmiş ve kullanıcı ayarlarından sorumludur.
+LinaCore model/tokenizer sözleşmelerini ve inference sınırını taşır. İki proje gelecekte
+local protocol ile bağlanabilir; LinaCore Ollama’ya zorunlu olarak bağımlı değildir.
+
+## Kurulum
+
+Python 3.11 veya üzeri gerekir:
 
 ```console
 python -m venv .venv
@@ -18,103 +51,124 @@ python -m venv .venv
 python -m pip install -e .
 ```
 
-Transformers tabanlı gerçek inference için optional grupları ayrıca kurun:
+Gerçek Transformers inference için:
 
 ```console
 python -m pip install -e ".[inference-transformers,inference-torch]"
 ```
 
-Geliştirme araçları:
+llama.cpp paketi yalnız foundation geliştirmesi için ayrı kurulabilir; bu sürüm gerçek
+GGUF üretimini etkinleştirmez:
 
 ```console
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[inference-llama-cpp]"
 ```
 
-## Model ağırlıkları ve manifest
+Geliştirme araçları için `python -m pip install -e ".[dev]"` kullanın.
 
-Model ağırlıkları Git’e eklenmez. Her model, yapılandırılmış `models/` root’u altında bir `linacore-model.toml` manifestiyle tanımlanır. Manifest model kimliği, backend, göreli model yolu, lisans, context sınırı, dtype/device politikası, capability ve isteğe bağlı SHA-256 checksum bilgilerini taşır.
-
-[Örnek manifest](examples/models/example-transformers/linacore-model.toml) yalnızca biçimi gösterir; gerçek veya kullanılabilir bir model değildir. Her modelin lisansını, kaynağını ve kullanım koşullarını ayrıca inceleyin.
-
-## Discovery ve güvenlik varsayılanları
-
-Discovery yalnızca yapılandırılmış model root’u içinde manifest arar; ağırlık yüklemez, inference başlatmaz ve ağ erişimi yapmaz. Varsayılanlar:
-
-- `local_files_only=true`
-- `trust_remote_code=false`
-- remote download kapalı
-- path traversal ve symlink escape reddedilir
-- unknown manifest/config alanları reddedilir
-- unsupported capability, dtype ve quantization kontrollü hata üretir
-
-## Device ve dtype
-
-`auto`, `cpu`, `cuda` ve `cuda:N` politikaları desteklenir; MPS yalnızca platform sağlıyorsa raporlanır. CPU güvenli fallback’tir. CPU üzerinde `float16` sessizce uygulanmaz. `int8` ve `int4` typed foundation olarak tanımlıdır, ancak bu sürümde quantization dependency’si zorunlu değildir ve destek yoksa açık hata döner.
-
-## CLI
+## CLI örnekleri
 
 ```console
 lina-core version
 lina-core health
-lina-core diagnostics
 lina-core diagnostics --json
 lina-core backends list
 lina-core devices list
 lina-core models discover
-lina-core models list
 lina-core models validate <model-id-or-manifest>
 lina-core runtime smoke
-lina-core runtime load <model-id>
 lina-core inference generate --model <model-id> --prompt "Merhaba" --max-new-tokens 32
 lina-core inference stream --model <model-id> --prompt "Merhaba"
 ```
 
-CLI argümanı olarak verilen prompt shell history içinde kalabilir. Hassas veri için prompt argümanı kullanmayın. Kalıcı runtime/network service bu sürümün kapsamında değildir; `runtime load` yalnızca komut süresince yükleme doğrulaması yapar.
+Komut satırındaki prompt shell history’de kalabilir; hassas veri vermeyin. Kalıcı
+runtime/network service henüz kapsamda değildir. `runtime load` yalnız komut süresince
+yükleme doğrulaması yapar.
 
-## Generation, streaming ve cancellation
+## Model manifesti ve güvenlik
 
-Generation seçenekleri backend’e kontrollü biçimde eşlenir. `temperature=0` greedy çalışır; seed Python, NumPy mevcutsa NumPy ve Torch’a uygulanır. Token usage tokenizer sonucundan, latency monotonic saatten hesaplanır. Streaming sırası `started → token* → completed/cancelled/error` şeklindedir. Request bazlı cancellation ve shutdown sırasında toplu iptal runtime API’sinde bulunur.
+Her model, yapılandırılmış `models/` root’u altında bir `linacore-model.toml` ile tanımlanır.
+Manifest; backend, göreli yollar, kaynak revision’ı, lisans, context, dtype/device,
+capability ve isteğe bağlı SHA-256 bilgilerini taşır. Transformers ve GGUF için örnekler:
 
-## Diagnostics ve benchmark
+- [Transformers manifesti](examples/models/example-transformers/linacore-model.toml)
+- [GGUF manifesti](examples/models/example-gguf/linacore-model.toml)
 
-Diagnostics; LinaCore/Python sürümü, işletim sistemi, mimari, optional package durumu, device’lar, model sayısı, yazma izni ve güvenlik varsayılanlarını raporlar. Secret veya environment variable değeri göstermez.
+Örnekler kullanılabilir model içermez. Varsayılanlar `local_files_only=true`,
+`trust_remote_code=false` ve remote download kapalıdır. Model indirme yalnız açık onay
+gerektiren manual script ile yapılır. Her modelin lisansını ve kaynağını ayrıca doğrulayın.
 
-Benchmark sözleşmesi load time, first-token latency, total latency, token sayıları, tokens/s ve optional memory alanlarını tanımlar. Mock sonuçları gerçek benchmark sayılmaz; CLI benchmark komutu yüklü gerçek model yoksa kontrollü hata verir.
+## Gerçek model doğrulaması
 
-## Test ve geliştirme
+Manual compatibility akışı; load, generation, streaming, cancellation, stop sequence,
+health, resource reporting ve unload davranışlarını typed JSON rapora kaydeder. Varsayılan
+test koşusu internete erişmez ve model ağırlığı istemez.
+
+2026-07-22 tarihinde `HuggingFaceTB/SmolLM2-135M`, revision
+`93efa2f097d58c2a74874c7e644dbc9b0cee75a2`, Apache-2.0, CPU/float32 üzerinde sekiz
+kontrolün tamamını geçti. Bu bir kalite/benchmark iddiası değil, backend uyumluluk
+doğrulamasıdır. Tekrarlama adımları ve ölçümler için
+[model compatibility belgesine](docs/model-compatibility.md) bakın.
+
+## İlk deneysel Lina modeli
+
+Dataset’i doğrulayıp training planını görmek ve cached base modelle açık onaylı quick eğitim
+başlatmak için:
 
 ```console
-python -m pytest
+python -m lina_core dataset validate data/examples/lina_sft_v0.1.jsonl
+python -m lina_core train plan --config configs/training/lina-135m-sft-v0.1.toml --profile quick
+python -m lina_core train run --config configs/training/lina-135m-sft-v0.1.toml --profile quick --yes
+```
+
+Bu repository model ağırlığını içermez. Yerel artifact `models/lina-135m-sft-v0.1` altında
+üretilir ve Git tarafından ignore edilir. Ayrıntılar: [ilk Lina modeli](docs/first-lina-model.md).
+
+## Test durumu
+
+```console
 python -m pytest -m "not model_integration"
 python -m ruff check .
 python -m mypy src/lina_core
 python -m compileall -q src
 python -m build
+python scripts/audit_public_repository.py
 ```
 
-Gerçek model entegrasyon testi `model_integration` marker’ı altındadır ve kullanıcı model yolu/optional dependency sağlamadıkça skip edilir.
+`model_integration` marker’ı kullanıcı tarafından sağlanan local manifest ve optional ML
+dependency ister; normal koşuda skip edilir. Güncel kesin test sayısı release yerine CI/test
+çıktısından izlenir.
 
-## Mimari belgeler
+## Yol haritası
 
-- [Mimari](docs/architecture.md)
-- [Backend’ler](docs/backends.md)
-- [Modeller](docs/models.md)
-- [Inference](docs/inference.md)
-- [Donanım](docs/hardware.md)
-- [Runtime](docs/runtime.md)
-- [Configuration](docs/configuration.md)
-- [Security](docs/security.md)
-- [Dataset](docs/datasets.md)
-- [Training](docs/training.md)
-- [Evaluation](docs/evaluation.md)
-- [Model yol haritası](docs/model-roadmap.md)
-- [Geliştirme](docs/development.md)
+- Lina SFT dataset’ini büyütmek ve assistant davranış değerlendirmesini iyileştirmek
+- Güvenli ara checkpoint/resume desteği eklemek
+- GGUF export’u gerçek llama.cpp aracı ve engine ile doğrulamak
+- Açık lisanslı küçük modellerle compatibility matrisini genişletmek
+- Türkçe tokenizer/dataset lisans ve provenance araştırması
+- Versioned Türkçe automatic/human evaluation
+- Reproducible fine-tuning ve checkpoint politikası
+- DirectML/ONNX ve farklı local donanım hedefleri
 
-## Bilinen sınırlamalar ve yol haritası
+## Bilinen sınırlamalar
 
-Bu sprintte repository içinde gerçek model, production server, Lina Desktop entegrasyonu, fine-tuning, vision, embeddings, tool calling ve hazır quantization yoktur. Transformers adapter gerçek local model için hazırlanmıştır; fakat bu release doğrulamasında model ağırlığı çalıştırılmamıştır. Sonraki aşamalar GGUF/llama.cpp adapter’ı, küçük local model uyumluluk matrisi, Türkçe değerlendirme ve reproducible fine-tuning araştırmasıdır.
+- llama.cpp/GGUF yalnız availability, config, discovery, manifest ve mock engine temelidir.
+- Production server ve Lina Desktop entegrasyonu yoktur.
+- Hazır quantization, fine-tuning, vision, embeddings ve tool calling yoktur.
+- Model çıktısının doğruluğu veya güvenliği garanti edilmez.
+- Pre-alpha public API’lerde stabilite garantisi yoktur.
+
+## Dokümantasyon ve katkı
+
+[Mimari](docs/architecture.md) · [Backend’ler](docs/backends.md) ·
+[Modeller](docs/models.md) · [Inference](docs/inference.md) ·
+[Security](docs/security.md) · [Geliştirme](docs/development.md) ·
+[Model yol haritası](docs/model-roadmap.md)
+
+Katkı süreci için [CONTRIBUTING.md](CONTRIBUTING.md), güvenlik bildirimi için
+[SECURITY.md](SECURITY.md) dosyasını okuyun.
 
 ## Lisans
 
-Kod MIT lisanslıdır. Model, tokenizer ve veri setlerinin lisansları bağımsızdır; bir model ağırlığı LinaCore ile kullanıldığı için otomatik olarak MIT kapsamına girmez.
-
+Kod [MIT](LICENSE) lisanslıdır. Model, tokenizer ve veri seti lisansları bağımsızdır;
+LinaCore ile kullanılmaları onları MIT kapsamına sokmaz.

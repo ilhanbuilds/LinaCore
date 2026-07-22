@@ -3,6 +3,18 @@ from typing import Any
 
 from lina_core.backends.errors import GenerationError
 from lina_core.inference.sampling import GenerationOptions
+from lina_core.runtime.cancellation import CancellationToken
+
+
+class CancellationStoppingCriteria:
+    """Transformers-compatible callable that stops generation after cancellation."""
+
+    def __init__(self, token: CancellationToken) -> None:
+        self.token = token
+
+    def __call__(self, input_ids: Any, scores: Any, **kwargs: Any) -> bool:
+        del input_ids, scores, kwargs
+        return self.token.cancelled
 
 
 def generation_kwargs(options: GenerationOptions) -> dict[str, Any]:

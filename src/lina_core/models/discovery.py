@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from lina_core.backends.llama_cpp.availability import llama_cpp_availability
 from lina_core.backends.transformers.availability import transformers_availability
 from lina_core.models.manifest import MANIFEST_NAME
 from lina_core.models.validation import ModelValidation, load_model_manifest
@@ -35,13 +36,17 @@ def discover_models(model_root: Path) -> DiscoveryResult:
     invalid: list[Path] = []
     duplicates: set[str] = set()
     seen: set[str] = set()
-    backend_status = transformers_availability()
+    backend_statuses = {
+        "transformers": transformers_availability(),
+        "llama.cpp": llama_cpp_availability(),
+    }
     for path in sorted(root.rglob(MANIFEST_NAME)):
         validation = load_model_manifest(path, root)
         if validation.manifest is None:
             invalid.append(path)
             continue
         manifest = validation.manifest
+        backend_status = backend_statuses[manifest.backend]
         if manifest.model_id in seen:
             duplicates.add(manifest.model_id)
             continue

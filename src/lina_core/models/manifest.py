@@ -8,7 +8,7 @@ from lina_core.core.exceptions import ConfigurationError
 from lina_core.models.metadata import ModelCapability
 
 MANIFEST_NAME = "linacore-model.toml"
-SUPPORTED_BACKENDS = {"transformers"}
+SUPPORTED_BACKENDS = {"llama.cpp", "transformers"}
 _REVISION = re.compile(r"^[A-Za-z0-9._/-]{1,128}$")
 _CHECKSUM = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -68,7 +68,7 @@ class ModelManifest:
 
     @property
     def model_format(self) -> ModelFormat:
-        return ModelFormat.TRANSFORMERS
+        return ModelFormat.GGUF if self.backend == "llama.cpp" else ModelFormat.TRANSFORMERS
 
 
 def manifest_fields() -> frozenset[str]:

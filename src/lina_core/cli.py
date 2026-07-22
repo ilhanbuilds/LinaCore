@@ -2,14 +2,23 @@ import argparse
 import json
 import sys
 import tomllib
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
+from lina_core.backends.llama_cpp.availability import llama_cpp_availability
 from lina_core.backends.transformers.availability import transformers_availability
 from lina_core.core.config import load_config
 from lina_core.core.exceptions import LinaCoreError
 from lina_core.core.paths import ProjectPaths
 from lina_core.core.version import RELEASE_NAME, __version__
+from lina_core.datasets.sft import (
+    dataset_fingerprint,
+    dataset_report,
+    load_sft_dataset,
+    render_record,
+    split_sft_dataset,
+)
 from lina_core.datasets.validation import load_manifest
 from lina_core.diagnostics.environment import environment_report
 from lina_core.diagnostics.hardware import detect_devices
@@ -20,12 +29,13 @@ from lina_core.evaluation.runner import EvaluationRunner
 from lina_core.inference.request import ChatMessage, ChatRole, InferenceRequest
 from lina_core.inference.sampling import GenerationOptions
 from lina_core.models.discovery import DiscoveredModel, discover_models
+from lina_core.models.gguf_export import GgufExportPlan, export_gguf, gguf_export_availability
 from lina_core.models.local import provider_from_manifest
 from lina_core.models.mock import MockModelProvider
 from lina_core.models.validation import load_model_manifest
 from lina_core.runtime.service import RuntimeService
 from lina_core.tokenizer.mock import MockTokenizerProvider
-from lina_core.training.config import load_training_config
+from lina_core.training.config import apply_training_profile, load_training_config
 from lina_core.training.runner import TrainingRunner
 
 
@@ -58,6 +68,16 @@ def _parser() -> argparse.ArgumentParser:
     models.add_parser("list")
     model_validate = models.add_parser("validate")
     model_validate.add_argument("target")
+    model_inspect = models.add_parser("inspect")
+    model_inspect.add_argument("target")
+    model_register = models.add_parser("register")
+    model_register.add_argument("manifest", type=Path)
+    model_export = models.add_parser("export-gguf")
+    model_export.add_argument("model_id")
+    model_export.add_argument("--converter", required=True, type=Path)
+    model_export.add_argument("--output", required=True, type=Path)
+    model_export.add_argument("--output-type", choices=("f16", "f32"), default="f16")
+    model_export.add_argument("--overwrite", action="store_true")
     runtime = sub.add_parser("runtime").add_subparsers(dest="action", required=True)
     runtime.add_parser("start")
     runtime.add_parser("smoke")
@@ -76,11 +96,23 @@ def _parser() -> argparse.ArgumentParser:
     benchmark = sub.add_parser("benchmark").add_subparsers(dest="action", required=True)
     benchmark.add_parser("run")
     dataset = sub.add_parser("dataset").add_subparsers(dest="action", required=True)
-    dataset_validate = dataset.add_parser("validate")
-    dataset_validate.add_argument("manifest", type=Path)
-    training = sub.add_parser("training").add_subparsers(dest="action", required=True)
-    training_dry_run = training.add_parser("dry-run")
-    training_dry_run.add_argument("config", type=Path)
+    for action in ("validate", "inspect", "fingerprint", "stats", "render", "split"):
+        dataset_command = dataset.add_parser(action)
+        dataset_command.add_argument("path", type=Path)
+        if action == "render":
+            dataset_command.add_argument("--limit", type=int, default=3)
+        if action == "split":
+            dataset_command.add_argument("--seed", type=int, default=42)
+    training = sub.add_parser("train").add_subparsers(dest="action", required=True)
+    for action in ("validate-config", "plan", "run"):
+        training_command = training.add_parser(action)
+        training_command.add_argument("--config", required=True, type=Path)
+        training_command.add_argument(
+            "--profile", choices=("smoke", "quick", "quality"), default="quick"
+        )
+        if action == "run":
+            training_command.add_argument("--yes", action="store_true")
+            training_command.add_argument("--overwrite-output", action="store_true")
     evaluation = sub.add_parser("evaluation").add_subparsers(dest="action", required=True)
     evaluation_run = evaluation.add_parser("run")
     evaluation_run.add_argument("config", type=Path)
@@ -198,6 +230,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any] | str:
         return report if args.as_json else diagnostics_text(report)
     if args.command == "backends":
         availability = transformers_availability()
+        llama_availability = llama_cpp_availability()
         return {
             "backends": [
                 {
@@ -209,7 +242,18 @@ def _execute(args: argparse.Namespace) -> dict[str, Any] | str:
                     "supported_devices": [
                         item.identifier for item in availability.supported_devices
                     ],
-                }
+                },
+                {
+                    "backend_id": llama_availability.backend_id,
+                    "available": llama_availability.available,
+                    "version": llama_availability.detected_version,
+                    "missing_packages": llama_availability.missing_packages,
+                    "reason": llama_availability.reason,
+                    "supported_devices": [
+                        item.identifier for item in llama_availability.supported_devices
+                    ],
+                    "warnings": llama_availability.warnings,
+                },
             ]
         }
     if args.command == "devices":
@@ -246,6 +290,37 @@ def _execute(args: argparse.Namespace) -> dict[str, Any] | str:
                 "status": validation.status,
                 "error": validation.error,
             }
+        if args.action == "inspect":
+            item = _find_model(args.target)
+            return _model_dict(item)
+        if args.action == "register":
+            validation = load_model_manifest(args.manifest.resolve(), _model_root())
+            if not validation.valid or validation.manifest is None:
+                raise LinaCoreError(validation.error or "Model manifesti geçersiz.")
+            return {
+                "status": "registered-by-discovery",
+                "model_id": validation.manifest.model_id,
+                "manifest": args.manifest.name,
+            }
+        if args.action == "export-gguf":
+            item = _find_model(args.model_id)
+            validation = load_model_manifest(item.manifest_path, _model_root())
+            if validation.model_path is None:
+                raise LinaCoreError("Export kaynak model yolu bulunamadı.")
+            export_availability = gguf_export_availability(args.converter)
+            if not export_availability.available:
+                raise LinaCoreError(export_availability.reason)
+            output = export_gguf(
+                GgufExportPlan(
+                    validation.model_path.relative_to(_model_root().resolve()),
+                    args.output,
+                    args.converter,
+                    args.output_type,
+                    args.overwrite,
+                ),
+                _model_root(),
+            )
+            return {"status": "exported", "output": output.name}
         return {
             "models": [_model_dict(item) for item in result.models],
             "invalid_manifests": [str(path) for path in result.invalid_manifests],
@@ -288,15 +363,50 @@ def _execute(args: argparse.Namespace) -> dict[str, Any] | str:
     if args.command == "benchmark":
         raise LinaCoreError("Benchmark için yüklenmiş gerçek bir model gereklidir.")
     if args.command == "dataset":
-        manifest = load_manifest(args.manifest)
-        return {
-            "status": "valid",
-            "dataset_id": manifest.dataset_id,
-            "records": manifest.record_count,
-        }
-    if args.command == "training":
+        if args.path.suffix == ".json":
+            manifest = load_manifest(args.path)
+            return {
+                "status": "valid",
+                "dataset_id": manifest.dataset_id,
+                "records": manifest.record_count,
+            }
+        records = load_sft_dataset(args.path)
+        if args.action == "fingerprint":
+            return {"fingerprint": dataset_fingerprint(records), "records": len(records)}
+        if args.action == "render":
+            return {
+                "records": [render_record(record) for record in records[: args.limit]],
+                "truncated": len(records) > args.limit,
+            }
+        if args.action == "split":
+            split = split_sft_dataset(
+                records,
+                seed=args.seed,
+                train_ratio=0.8,
+                validation_ratio=0.1,
+                test_ratio=0.1,
+            )
+            return {
+                "seed": args.seed,
+                "train": [item.record_id for item in split.train],
+                "validation": [item.record_id for item in split.validation],
+                "test": [item.record_id for item in split.test],
+            }
+        dataset_summary = dataset_report(args.path, records)
+        return {"status": "valid", **asdict(dataset_summary)}
+    if args.command == "train":
         config = load_training_config(args.config)
-        return TrainingRunner(ProjectPaths.discover().root).dry_run(config)
+        config = apply_training_profile(config, args.profile)
+        if args.action == "run" and args.overwrite_output:
+            config = replace(config, overwrite_output=True)
+        runner = TrainingRunner(ProjectPaths.discover().root)
+        if args.action == "run":
+            if not args.yes:
+                raise LinaCoreError("Training başlatmak için açık --yes onayı gereklidir.")
+            return asdict(runner.run(config))
+        training_plan = runner.dry_run(config)
+        training_plan["profile"] = args.profile
+        return training_plan
     if args.command == "evaluation":
         return _evaluation(args.config)
     raise LinaCoreError("Desteklenmeyen komut.")

@@ -1,0 +1,34 @@
+name: Hata bildirimi
+description: Tekrar üretilebilir bir LinaCore hatası bildirin.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Secret, kişisel veri veya model ağırlığı paylaşmayın."
+  - type: textarea
+    id: summary
+    attributes:
+      label: Özet
+      description: Beklenen ve gerçekleşen davranışı açıklayın.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Tekrar üretme adımları
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Güvenli diagnostics çıktısı
+      description: `lina-core diagnostics --json` çıktısını secret içermediğini kontrol ederek ekleyin.
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options: [mock, transformers, llama.cpp, backend kullanılmadı]
+    validations:
+      required: true
+

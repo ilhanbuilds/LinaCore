@@ -10,7 +10,11 @@ from lina_core.backends.errors import BackendUnavailableError, GenerationError
 from lina_core.backends.transformers.availability import transformers_availability
 from lina_core.backends.transformers.config import TransformersBackendConfig
 from lina_core.backends.transformers.device import torch_dtype
-from lina_core.backends.transformers.generation import apply_seed, generation_kwargs
+from lina_core.backends.transformers.generation import (
+    CancellationStoppingCriteria,
+    apply_seed,
+    generation_kwargs,
+)
 from lina_core.backends.transformers.loader import load_modules
 from lina_core.core.exceptions import ModelLoadError
 from lina_core.diagnostics.hardware import detect_devices
@@ -102,6 +106,11 @@ class TransformersModelProvider(ModelProvider):
             tokenizer = TransformersTokenizerProvider(self.config)
             tokenizer.load()
             self._tokenizer = tokenizer
+            dtype_keyword = (
+                "dtype"
+                if int(transformers.__version__.split(".", maxsplit=1)[0]) >= 5
+                else "torch_dtype"
+            )
             self._model = transformers.AutoModelForCausalLM.from_pretrained(
                 self.config.model_path,
                 revision=self.config.revision,
@@ -109,7 +118,7 @@ class TransformersModelProvider(ModelProvider):
                 trust_remote_code=False,
                 low_cpu_mem_usage=self.config.low_cpu_mem_usage,
                 use_safetensors=self.config.use_safetensors,
-                torch_dtype=torch_dtype(self._selection, torch),
+                **{dtype_keyword: torch_dtype(self._selection, torch)},
             )
             self._model.to(self._selection.device.identifier)
             self._model.eval()
@@ -145,12 +154,17 @@ class TransformersModelProvider(ModelProvider):
             raise GenerationError("İstek inference başlamadan iptal edildi.")
         started = time.perf_counter()
         try:
+            transformers, _ = load_modules()
             prepared = self._prepare(request, tokenizer)
             inputs = tokenizer.raw_tokenizer(prepared.rendered.text, return_tensors="pt")
             inputs = {key: value.to(selection.device.identifier) for key, value in inputs.items()}
             apply_seed(request.options.seed, torch)
+            generate_options = generation_kwargs(request.options)
+            generate_options["stopping_criteria"] = transformers.StoppingCriteriaList(
+                [CancellationStoppingCriteria(token)]
+            )
             with torch.inference_mode():
-                output = model.generate(**inputs, **generation_kwargs(request.options))
+                output = model.generate(**inputs, **generate_options)
             prompt_length = int(inputs["input_ids"].shape[-1])
             generated = output[0][prompt_length:].tolist()
             text = tokenizer.decode(generated)
@@ -159,7 +173,12 @@ class TransformersModelProvider(ModelProvider):
             latency = time.perf_counter() - started
             self._generated_tokens += completion_tokens
             self._last_latency = latency
-            finish = "stop" if stopped.stopped else "length"
+            if token.cancelled:
+                finish = "cancelled"
+            elif stopped.stopped or completion_tokens < request.options.max_new_tokens:
+                finish = "stop"
+            else:
+                finish = "length"
             return InferenceResponse(
                 request.request_id,
                 self.config.model_id,
@@ -189,6 +208,9 @@ class TransformersModelProvider(ModelProvider):
             skip_special_tokens=True,
         )
         kwargs = {**inputs, **generation_kwargs(request.options), "streamer": streamer}
+        kwargs["stopping_criteria"] = transformers.StoppingCriteriaList(
+            [CancellationStoppingCriteria(cancellation)]
+        )
         failure: list[Exception] = []
 
         def worker() -> None:
@@ -198,6 +220,7 @@ class TransformersModelProvider(ModelProvider):
                     model.generate(**kwargs)
             except Exception as exc:  # Backend worker boundary.
                 failure.append(exc)
+                streamer.end()
 
         thread = Thread(target=worker, name=f"lina-stream-{request.request_id}", daemon=True)
         thread.start()

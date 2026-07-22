@@ -1,0 +1,21 @@
+[model]
+schema_version = 1
+model_id = "example-gguf"
+display_name = "Örnek GGUF Modeli"
+version = "0"
+backend = "llama.cpp"
+architecture = "llama-compatible"
+model_path = "./placeholder-model.gguf"
+source = "example-only"
+license = "Lisans kullanıcı tarafından doğrulanmalıdır"
+context_length = 2048
+default_device = "cpu"
+default_dtype = "auto"
+quantization = "none"
+capabilities = ["text_generation", "streaming"]
+chat_template_policy = "fallback"
+trust_remote_code = false
+local_files_only = true
+example = true
+notes = "Bu manifest gerçek GGUF dosyası içermez."
+

@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Güvenlik bildirimi
+    url: https://github.com/ilhanki/LinaCore/security/advisories/new
+    about: Güvenlik açıklarını public issue yerine özel olarak bildirin.
+
