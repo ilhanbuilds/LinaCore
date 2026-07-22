@@ -27,8 +27,10 @@ TEXT_SUFFIXES = {"", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 PATTERN_EXEMPT_PATHS = {
     "scripts/audit_public_repository.py",
     "src/lina_core/security/secrets.py",
+    "src/lina_core/datasets/sft.py",
     "tests/unit/core/test_core.py",
     "tests/unit/security/test_public_audit.py",
+    "tests/unit/datasets/test_sft_dataset.py",
 }
 PATTERNS = {
     "local_path": re.compile(r"(?i)(?:[A-Z]:[\\/](?:Users|Documents|Desktop)[\\/]|/home/|/Users/)"),

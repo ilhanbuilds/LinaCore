@@ -78,6 +78,9 @@ datasets/private/
 datasets/processed/
 datasets/cache/
 datasets/downloads/
+data/private/
+data/generated/
+data/cache/
 reports/*
 !reports/README.md
 compatibility-reports/
