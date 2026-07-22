@@ -72,3 +72,10 @@ python -m pytest -m model_integration
 Süreler tek bir geliştirme makinesindeki uyumluluk koşusudur; benchmark veya performans
 garantisi değildir. Model kartındaki kullanım koşulları ve sınırlamalar LinaCore’dan
 bağımsız olarak değerlendirilmelidir.
+
+## Lina-135M-SFT-v0.1
+
+2026-07-22 tarihinde local quick SFT artifact’i CPU/float32 üzerinde aynı sekiz compatibility
+kontrolünün tamamını geçti. Load 13.56 saniye; generation, streaming, cancellation, stop,
+health, resource ve unload sonuçları başarılıydı. Bu teknik uyumluluk sonucu davranış
+kalitesi anlamına gelmez; dokuz promptluk evaluation yalnız `1/9` rule pass vermiştir.

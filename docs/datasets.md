@@ -1,6 +1,19 @@
-# Dataset’ler
+# Dataset
 
-Manifest; dataset/version/split, kayıt sayısı, dil, lisans, SHA-256 checksum ve kaynak bilgisi taşır. Kayıtlar stable ID, output, source ve language gerektirir; instruction/input/messages ve sınırlı metadata isteğe bağlıdır.
+`data/examples/lina_sft_v0.1.jsonl`, 24 güvenli ve sentetik konuşma kaydı içerir. Her kayıt
+strict `id`, `messages`, `category`, `language`, `source`, `license`, `quality_status` ve
+`metadata` alanlarını taşır. Örnek veri CC0-1.0 olarak sunulur; kişisel veya kullanıcıya özel
+veri içermez.
 
-Validation boş output, duplicate, geçersiz dil, aşırı boyut, private indicator ve yaygın secret biçimlerini reddeder. NFC normalization, whitespace cleanup ve fingerprint temeli bulunur. Gerçek veri repository’ye eklenmez; lisans, consent, provenance, kişisel veri temizliği ve retention kararı veri sahibinin sorumluluğundadır.
+Validator boş/geçersiz mesajı, unknown field’ı, duplicate id/içeriği, aşırı boyutu,
+secret/token benzeri metni, kişisel yolu, e-posta ve telefon benzeri veriyi reddeder.
+Fingerprint canonical UTF-8 JSON üzerinden SHA-256’dır. Split seed ile deterministiktir ve
+küçük dataset için validation/test fallback uygular.
 
+```console
+python -m lina_core dataset validate data/examples/lina_sft_v0.1.jsonl
+python -m lina_core dataset stats data/examples/lina_sft_v0.1.jsonl
+python -m lina_core dataset fingerprint data/examples/lina_sft_v0.1.jsonl
+python -m lina_core dataset split data/examples/lina_sft_v0.1.jsonl --seed 42
+python -m lina_core dataset render data/examples/lina_sft_v0.1.jsonl --limit 3
+```

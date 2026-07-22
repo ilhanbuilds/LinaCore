@@ -6,9 +6,10 @@ LinaCore; model keşfi, yükleme, metin üretimi, streaming, iptal, sağlık ve 
 raporlama için typed sözleşmeler sunar. Temel kurulum ağır ML paketleri indirmez; gerçek
 backend’ler isteğe bağlıdır. Projede model ağırlığı, cache veya veri seti bulunmaz.
 
-> **Proje durumu:** `0.2.0a0` pre-alpha. Transformers yolu gerçek küçük bir modelle
-> doğrulanmıştır. llama.cpp/GGUF tarafı ise test edilebilir bir foundation’dır; gerçek GGUF
-> inference henüz uygulanmamıştır. API’ler stabil sürüm garantisi taşımaz.
+> **Proje durumu:** Transformers local inference ve ilk Lina-specific SFT pipeline’ı
+> çalışmaktadır. `Lina-135M-SFT-v0.1`, SmolLM2-135M üzerine küçük sentetik veriyle eğitilmiş
+> deneysel bir türevdir; sıfırdan pretrained bir Lina foundation modeli değildir. GGUF export
+> sözleşmesi hazır, gerçek export ve llama.cpp doğrulaması ise henüz tamamlanmamıştır.
 
 ## Öne çıkanlar
 
@@ -17,6 +18,8 @@ backend’ler isteğe bağlıdır. Projede model ağırlığı, cache veya veri 
 - Generation, streaming, cancellation, stop sequence, context budget ve typed hata modeli
 - Optional dependency, cihaz, dtype, sağlık ve kaynak diagnostics
 - İnternet/model gerektirmeyen varsayılan testler; gerçek model için ayrı manual integration
+- Strict Türkçe SFT dataset’i, deterministik split/fingerprint ve atomik model artifact üretimi
+- Base/fine-tuned davranış karşılaştırması, model card ve compatibility raporu
 - Hafif çekirdek: temel `lina-core` paketinin runtime dependency’si yoktur
 
 ## Mimari
@@ -107,6 +110,20 @@ kontrolün tamamını geçti. Bu bir kalite/benchmark iddiası değil, backend u
 doğrulamasıdır. Tekrarlama adımları ve ölçümler için
 [model compatibility belgesine](docs/model-compatibility.md) bakın.
 
+## İlk deneysel Lina modeli
+
+Dataset’i doğrulayıp training planını görmek ve cached base modelle açık onaylı quick eğitim
+başlatmak için:
+
+```console
+python -m lina_core dataset validate data/examples/lina_sft_v0.1.jsonl
+python -m lina_core train plan --config configs/training/lina-135m-sft-v0.1.toml --profile quick
+python -m lina_core train run --config configs/training/lina-135m-sft-v0.1.toml --profile quick --yes
+```
+
+Bu repository model ağırlığını içermez. Yerel artifact `models/lina-135m-sft-v0.1` altında
+üretilir ve Git tarafından ignore edilir. Ayrıntılar: [ilk Lina modeli](docs/first-lina-model.md).
+
 ## Test durumu
 
 ```console
@@ -124,7 +141,9 @@ dependency ister; normal koşuda skip edilir. Güncel kesin test sayısı releas
 
 ## Yol haritası
 
-- llama.cpp engine adapter’ını foundation üzerinde gerçek GGUF inference’a taşımak
+- Lina SFT dataset’ini büyütmek ve assistant davranış değerlendirmesini iyileştirmek
+- Güvenli ara checkpoint/resume desteği eklemek
+- GGUF export’u gerçek llama.cpp aracı ve engine ile doğrulamak
 - Açık lisanslı küçük modellerle compatibility matrisini genişletmek
 - Türkçe tokenizer/dataset lisans ve provenance araştırması
 - Versioned Türkçe automatic/human evaluation
