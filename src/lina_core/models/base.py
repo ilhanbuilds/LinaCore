@@ -6,6 +6,7 @@ from lina_core.inference.response import InferenceResponse
 from lina_core.inference.streaming import StreamEvent
 from lina_core.models.metadata import ModelMetadata
 from lina_core.runtime.health import HealthStatus
+from lina_core.runtime.resources import ResourceReport
 
 
 class ModelProvider(ABC):
@@ -25,3 +26,9 @@ class ModelProvider(ABC):
     def stream_generate(self, request: InferenceRequest) -> Iterator[StreamEvent]: ...
     @abstractmethod
     def health(self) -> HealthStatus: ...
+
+    def cancel(self, request_id: str, reason: str = "user") -> bool:
+        return False
+
+    def resource_usage(self) -> ResourceReport:
+        return ResourceReport()

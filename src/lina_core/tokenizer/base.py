@@ -17,3 +17,7 @@ class TokenizerProvider(ABC):
     @property
     def vocabulary_size(self) -> int:
         return self.metadata.vocabulary_size
+
+    def unload(self) -> None:
+        """Release tokenizer resources when an adapter owns any."""
+        return None
