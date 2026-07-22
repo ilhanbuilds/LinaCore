@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lina-core"
-version = "0.1.0a0"
+dynamic = ["version"]
 description = "Local, provider-independent AI runtime foundation for Lina."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,9 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["build>=1.2", "mypy>=1.10", "pytest>=8.2", "pytest-cov>=5", "ruff>=0.5"]
+inference-transformers = ["transformers>=4.41"]
+inference-torch = ["torch>=2.2"]
+all = ["transformers>=4.41", "torch>=2.2"]
 
 [project.scripts]
 lina-core = "lina_core.cli:main"
@@ -29,17 +32,22 @@ lina-core = "lina_core.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/lina_core"]
 
+[tool.hatch.version]
+path = "src/lina_core/core/version.py"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+allowed-confusables = ["ı"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = ["model_integration: requires a user-supplied local model and optional ML dependencies"]
 
 [tool.coverage.run]
 source = ["lina_core"]
@@ -55,4 +63,3 @@ files = ["src/lina_core"]
 strict = true
 warn_unused_ignores = true
 no_implicit_optional = true
-
