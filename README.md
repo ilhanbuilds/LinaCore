@@ -1,5 +1,7 @@
 # LinaCore
 
+[![CI](https://github.com/ilhanki/LinaCore/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ilhanki/LinaCore/actions/workflows/ci.yml)
+
 **Yerel, provider-bağımsız ve güvenli yapay zekâ çalışma zamanı temeli.**
 
 LinaCore; model keşfi, yükleme, metin üretimi, streaming, iptal, sağlık ve kaynak
@@ -64,7 +66,8 @@ GGUF üretimini etkinleştirmez:
 python -m pip install -e ".[inference-llama-cpp]"
 ```
 
-Geliştirme araçları için `python -m pip install -e ".[dev]"` kullanın.
+Geliştirme araçları için `python -m pip install -e ".[dev]"` kullanın. Bu grup Torch,
+Transformers, NumPy veya llama.cpp kurmaz; ML paketleri yalnız ilgili optional extra ile gelir.
 
 ## CLI örnekleri
 
@@ -127,7 +130,7 @@ Bu repository model ağırlığını içermez. Yerel artifact `models/lina-135m-
 ## Test durumu
 
 ```console
-python -m pytest -m "not model_integration"
+python -m pytest -m "not manual_integration and not model_integration"
 python -m ruff check .
 python -m mypy src/lina_core
 python -m compileall -q src
@@ -154,7 +157,7 @@ dependency ister; normal koşuda skip edilir. Güncel kesin test sayısı releas
 
 - llama.cpp/GGUF yalnız availability, config, discovery, manifest ve mock engine temelidir.
 - Production server ve Lina Desktop entegrasyonu yoktur.
-- Hazır quantization, fine-tuning, vision, embeddings ve tool calling yoktur.
+- Hazır quantization, LoRA, ara checkpoint resume, vision, embeddings ve tool calling yoktur.
 - Model çıktısının doğruluğu veya güvenliği garanti edilmez.
 - Pre-alpha public API’lerde stabilite garantisi yoktur.
 

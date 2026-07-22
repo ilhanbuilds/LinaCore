@@ -24,13 +24,14 @@ Transformers veya llama.cpp adapter’ı üzerinde çalışıyorsanız yalnız g
 ## Doğrulama
 
 ```console
-python -m pytest -m "not model_integration"
+python -m pytest -m "not manual_integration and not model_integration"
 python -m ruff check .
 python -m mypy src/lina_core
 python -m compileall -q src
 python -m build
+python -m pip check
 python scripts/audit_public_repository.py
 ```
 
-Commit mesajlarında Conventional Commits kullanın. Pull request açıklamasında kapsamı, test kanıtını, bilinen sınırlamaları ve varsa model/dataset lisansını belirtin.
-
+Commit mesajlarında Conventional Commits kullanın. Değişiklik teslim notunda kapsamı, test
+kanıtını, bilinen sınırlamaları ve varsa model/dataset lisansını belirtin.

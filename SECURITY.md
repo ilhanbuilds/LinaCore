@@ -14,3 +14,5 @@ LinaCore model dosyalarını güvenilir kabul etmez. Varsayılan politika local-
 
 Repository’ye secret, token, credential, private key, gerçek kullanıcı verisi, model ağırlığı veya private dataset eklemeyin. Yanlışlıkla secret commit edilirse yalnız dosyayı silmek yeterli değildir; credential derhâl rotate edilmeli ve Git geçmişi repository sahibiyle koordineli biçimde temizlenmelidir.
 
+Normal CI yalnız `.[dev]` kurar; model indirmez, training başlatmaz ve Hugging Face tokenı
+istemez. Gerçek model ve training kontrolleri manual integration marker’ları altında kalır.
