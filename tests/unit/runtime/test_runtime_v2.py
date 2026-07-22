@@ -181,4 +181,27 @@ def test_nested_config_invalid(tmp_path: Path, content: str) -> None:
 
 @pytest.mark.model_integration
 def test_manual_local_model_integration() -> None:
-    pytest.skip("Yerel model yolu ve optional bağımlılıklar kullanıcı tarafından sağlanmadı.")
+    import os
+
+    from lina_core.models.compatibility import (
+        CompatibilityStatus,
+        TransformersCompatibilityRunner,
+    )
+    from lina_core.models.local import provider_from_manifest
+    from lina_core.models.validation import load_model_manifest
+
+    raw_manifest = os.environ.get("LINA_CORE_MODEL_MANIFEST")
+    if not raw_manifest:
+        pytest.skip("LINA_CORE_MODEL_MANIFEST kullanıcı tarafından sağlanmadı.")
+    manifest_path = Path(raw_manifest).resolve()
+    model_root = Path(os.environ.get("LINA_CORE_MODEL_ROOT", "models")).resolve()
+    validation = load_model_manifest(manifest_path, model_root)
+    assert validation.valid and validation.manifest is not None
+    manifest = validation.manifest
+    report = TransformersCompatibilityRunner(
+        provider_from_manifest(manifest_path, model_root),
+        model_version=manifest.version,
+        source_revision=manifest.source_revision,
+        license_name=manifest.license,
+    ).run()
+    assert report.status is CompatibilityStatus.PASSED, report.to_json()
