@@ -1,0 +1,84 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.python-version
+# Virtual environments
+.venv/
+venv/
+env/
+# Build
+build/
+dist/
+*.egg-info/
+.eggs/
+# Test and tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+credentials*
+secrets*
+auth.json
+# Logs and runtime
+logs/
+*.log
+cache/
+tmp/
+temp/
+runtime/
+*.pid
+# Models, weights, checkpoints and data
+weights/
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+checkpoints/*
+!checkpoints/README.md
+models/*
+!models/README.md
+datasets/raw/
+datasets/private/
+datasets/processed/
+datasets/cache/
+datasets/downloads/
+reports/*
+!reports/README.md
+# Training systems, databases and profiling
+wandb/
+mlruns/
+lightning_logs/
+runs/
+tensorboard/
+*.db
+*.sqlite
+*.sqlite3
+*.prof
+*.lprof
+
