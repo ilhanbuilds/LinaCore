@@ -17,6 +17,9 @@ dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cache/
+.huggingface/
+huggingface/
 .coverage
 .coverage.*
 htmlcov/
@@ -77,6 +80,7 @@ datasets/cache/
 datasets/downloads/
 reports/*
 !reports/README.md
+compatibility-reports/
 # Training systems, databases and profiling
 wandb/
 mlruns/

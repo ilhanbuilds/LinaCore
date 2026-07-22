@@ -1,0 +1,23 @@
+name: Özellik önerisi
+description: LinaCore için kapsamı belirli bir geliştirme önerin.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Çözmek istediğiniz kullanım ihtiyacını açıklayın.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Önerilen çözüm
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Alternatifler ve trade-off’lar
+
