@@ -1,0 +1,21 @@
+log_level = "INFO"
+runtime_provider = "mock"
+tokenizer = "mock"
+debug = false
+
+[limits]
+max_prompt_characters = 32768
+max_messages = 128
+max_output_tokens = 4096
+max_dataset_record_size = 1000000
+max_config_size = 1000000
+max_report_size = 5000000
+max_streamed_events = 4098
+
+[directories]
+models = "models"
+checkpoints = "checkpoints"
+datasets = "datasets"
+reports = "reports"
+logs = "logs"
+

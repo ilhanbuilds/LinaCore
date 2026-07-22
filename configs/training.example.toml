@@ -1,0 +1,18 @@
+[training]
+run_name = "foundation-dry-run"
+model_id = "mock"
+tokenizer_id = "mock"
+dataset_manifest = "datasets/example.manifest.json"
+output_dir = "checkpoints/foundation-dry-run"
+seed = 42
+epochs = 1
+batch_size = 1
+gradient_accumulation = 1
+learning_rate = 0.0001
+warmup_ratio = 0.0
+max_sequence_length = 512
+precision = "fp32"
+checkpoint_interval = 100
+evaluation_interval = 100
+save_total_limit = 2
+

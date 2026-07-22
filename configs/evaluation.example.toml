@@ -1,0 +1,11 @@
+[evaluation]
+provider = "mock"
+dataset_id = "inline-smoke"
+metrics = ["exact_match", "normalized_exact_match", "contains_expected", "response_length", "deterministic_repeatability"]
+report_name = "evaluation-example.json"
+
+[[evaluation.samples]]
+prompt = "hello"
+expected_output = "[mock] hello"
+language = "en"
+

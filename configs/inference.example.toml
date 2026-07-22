@@ -1,0 +1,11 @@
+[inference]
+model_id = "mock"
+stream = true
+max_new_tokens = 128
+temperature = 0.7
+top_p = 0.95
+top_k = 40
+seed = 42
+stop = ["<stop>"]
+repetition_penalty = 1.0
+
