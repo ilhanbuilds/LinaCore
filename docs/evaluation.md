@@ -12,3 +12,9 @@ python scripts/compare_local_models.py models/manual-smollm2-135m/linacore-model
 Keyword skoru insan değerlendirmesi değildir. İlk 3-epoch koşuda generation success %100
 olsa da fine-tuned rule pass `1/9`, base `2/9` olmuştur. Model teknik olarak çalışır, fakat
 küçük dataset henüz güvenilir Lina davranışı üretmemektedir.
+
+v0.2 holdout 90 prompt ve 30 kategori içerir. Değerlendirme required concept gruplarını,
+forbidden claim'i, tekrarı, soru kopyalamayı, boş çıktıyı, Türkçe sezgisini ve
+kritik failure mantığını birlikte uygular. Base, v0.1 ve v0.2 aynı temperature 0,
+max_new_tokens 64 ve seed 42 ile karşılaştırılır. Sonuçlar ve sınırlamalar
+[Lina Model v0.2 belgesinde](lina-model-v0.2.md) bulunur.

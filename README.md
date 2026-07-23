@@ -8,9 +8,10 @@ LinaCore; model keşfi, yükleme, metin üretimi, streaming, iptal, sağlık ve 
 raporlama için typed sözleşmeler sunar. Temel kurulum ağır ML paketleri indirmez; gerçek
 backend’ler isteğe bağlıdır. Projede model ağırlığı, cache veya veri seti bulunmaz.
 
-> **Proje durumu:** Transformers local inference ve ilk Lina-specific SFT pipeline’ı
-> çalışmaktadır. `Lina-135M-SFT-v0.1`, SmolLM2-135M üzerine küçük sentetik veriyle eğitilmiş
-> deneysel bir türevdir; sıfırdan pretrained bir Lina foundation modeli değildir. GGUF export
+> **Proje durumu:** Transformers local inference, grouped dataset split, behavioral holdout ve
+> full SFT/LoRA pipeline'ı çalışmaktadır. `Lina-0.5B-SFT-v0.2` base ve v0.1'den daha iyi
+> olsa da 90-prompt holdout'ta %50 ile minimum %60 hedefini karşılamadı; durum `PARTIAL` ve
+> model production-ready değildir. Model sıfırdan pretrained değildir. GGUF export
 > sözleşmesi hazır, gerçek export ve llama.cpp doğrulaması ise henüz tamamlanmamıştır.
 
 ## Öne çıkanlar
@@ -20,8 +21,9 @@ backend’ler isteğe bağlıdır. Projede model ağırlığı, cache veya veri 
 - Generation, streaming, cancellation, stop sequence, context budget ve typed hata modeli
 - Optional dependency, cihaz, dtype, sağlık ve kaynak diagnostics
 - İnternet/model gerektirmeyen varsayılan testler; gerçek model için ayrı manual integration
-- Strict Türkçe SFT dataset’i, deterministik split/fingerprint ve atomik model artifact üretimi
-- Base/fine-tuned davranış karşılaştırması, model card ve compatibility raporu
+- Strict Türkçe SFT dataset'i, deterministik split/fingerprint ve atomik model artifact üretimi
+- 600 kayıt/30 kategori, leakage audit'i ve 90-prompt bağımsız behavioral holdout
+- LoRA target keşfi, validation/best-state ve üç-model davranış karşılaştırması
 - Hafif çekirdek: temel `lina-core` paketinin runtime dependency’si yoktur
 
 ## Mimari
@@ -127,6 +129,10 @@ python -m lina_core train run --config configs/training/lina-135m-sft-v0.1.toml 
 Bu repository model ağırlığını içermez. Yerel artifact `models/lina-135m-sft-v0.1` altında
 üretilir ve Git tarafından ignore edilir. Ayrıntılar: [ilk Lina modeli](docs/first-lina-model.md).
 
+v0.2 dataset, LoRA training ve gerçek holdout sonucu için
+[Lina Model v0.2](docs/lina-model-v0.2.md) belgesine bakın. Sonuç `PARTIAL` olduğu için
+package sürümü yükseltilmemiştir.
+
 ## Test durumu
 
 ```console
@@ -157,7 +163,8 @@ dependency ister; normal koşuda skip edilir. Güncel kesin test sayısı releas
 
 - llama.cpp/GGUF yalnız availability, config, discovery, manifest ve mock engine temelidir.
 - Production server ve Lina Desktop entegrasyonu yoktur.
-- Hazır quantization, LoRA, ara checkpoint resume, vision, embeddings ve tool calling yoktur.
+- Hazır quantization, ara checkpoint resume, vision, embeddings ve tool calling yoktur.
+- LoRA training deneyseldir; v0.2 kalite ve kritik failure kabul kapılarını geçmemiştir.
 - Model çıktısının doğruluğu veya güvenliği garanti edilmez.
 - Pre-alpha public API’lerde stabilite garantisi yoktur.
 
