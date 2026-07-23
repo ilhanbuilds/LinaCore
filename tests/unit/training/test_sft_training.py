@@ -126,9 +126,10 @@ def test_v0_2_quality_config_uses_grouped_lora_training() -> None:
 
     assert quality.use_lora and quality.merge_adapter
     assert quality.split_strategy == "grouped"
-    assert quality.max_steps == 80
+    assert quality.max_steps == 720
     assert quality.max_sequence_length == 256
     assert quality.base_model_id == "Qwen/Qwen2.5-0.5B-Instruct"
+    assert quality.model_context_length == 32768
 
 
 def test_lora_targets_are_discovered_from_model_architecture() -> None:

@@ -23,6 +23,8 @@ class TrainingConfig:
     base_license: str = "Apache-2.0"
     architecture: str = "SmolLM2ForCausalLM"
     parameter_count: int = 135_000_000
+    model_context_length: int = 8192
+    chat_template_policy: str = "fallback"
     tokenizer_id: str = ""
     dataset_manifest: str = ""
     dataset_format: str = "jsonl"
@@ -135,13 +137,19 @@ class TrainingConfig:
             raise TrainingError("Harici training telemetry bu sürümde desteklenmiyor.")
         if self.split_strategy not in {"random", "grouped"}:
             raise TrainingError("Desteklenmeyen dataset split stratejisi.")
+        if self.chat_template_policy not in {"required", "fallback"}:
+            raise TrainingError("Geçersiz training chat template politikası.")
         if self.merge_adapter and not self.use_lora:
             raise TrainingError("Adapter birleştirme yalnız LoRA ile kullanılabilir.")
         if self.use_lora and (
             self.lora_r <= 0 or self.lora_alpha <= 0 or not 0 <= self.lora_dropout < 1
         ):
             raise TrainingError("LoRA ayarları geçersiz.")
-        if self.parameter_count <= 0 or self.early_stopping_patience < 0:
+        if (
+            self.parameter_count <= 0
+            or self.model_context_length <= 0
+            or self.early_stopping_patience < 0
+        ):
             raise TrainingError("Model metadata veya early stopping ayarı geçersiz.")
 
     @property

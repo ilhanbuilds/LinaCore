@@ -260,7 +260,20 @@ class TrainingRunner:
             weight_decay=config.weight_decay,
         )
         train_items = list(split.train)
+        epoch_micro_steps = math.ceil(len(train_items) / config.batch_size)
+        planned_micro_steps = config.max_steps or epoch_micro_steps * config.num_train_epochs
+        planned_optimizer_steps = math.ceil(
+            planned_micro_steps / config.gradient_accumulation_steps
+        )
+        warmup_steps = round(planned_optimizer_steps * config.warmup_ratio)
+        get_scheduler: Any = transformers.get_linear_schedule_with_warmup
+        scheduler = get_scheduler(
+            optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=planned_optimizer_steps,
+        )
         losses: list[float] = []
+        step_durations: list[float] = []
         validation_curve: list[dict[str, float | int]] = []
         global_step = 0
         optimizer_steps = 0
@@ -274,17 +287,20 @@ class TrainingRunner:
             random.Random(config.seed + epoch_index).shuffle(train_items)
             for start_index in range(0, len(train_items), config.batch_size):
                 batch = train_items[start_index : start_index + config.batch_size]
+                step_started = time.perf_counter()
                 encoded = self._encode(tokenizer, batch, config.max_sequence_length, torch)
                 encoded = {key: value.to(config.device) for key, value in encoded.items()}
                 outputs = model(**encoded)
                 loss = outputs.loss / config.gradient_accumulation_steps
                 loss.backward()
                 losses.append(float(outputs.loss.detach().cpu()))
+                step_durations.append(time.perf_counter() - step_started)
                 global_step += 1
                 accumulation_complete = global_step % config.gradient_accumulation_steps == 0
                 final_batch = start_index + config.batch_size >= len(train_items)
                 if accumulation_complete or final_batch:
                     optimizer.step()
+                    scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
                     optimizer_steps += 1
                 if global_step % config.evaluation_steps == 0:
@@ -389,6 +405,7 @@ class TrainingRunner:
                 "test": len(split.test),
             },
             "created_at": datetime.now(UTC).isoformat(),
+            "duration_seconds": duration,
             "python_version": sys.version.split()[0],
             "torch_version": torch.__version__,
             "transformers_version": transformers.__version__,
@@ -403,11 +420,15 @@ class TrainingRunner:
             "max_sequence_length": config.max_sequence_length,
             "training_steps": global_step,
             "optimizer_steps": optimizer_steps,
+            "planned_optimizer_steps": planned_optimizer_steps,
+            "warmup_steps": warmup_steps,
             "final_training_loss": losses[-1],
             "validation_loss": validation_loss,
             "perplexity": perplexity,
             "best_step": best_step,
             "training_curve": losses,
+            "step_durations_seconds": step_durations,
+            "average_step_seconds": sum(step_durations) / len(step_durations),
             "validation_curve": validation_curve,
             "artifact_format": (
                 "Transformers Safetensors merged LoRA model"
@@ -448,7 +469,7 @@ class TrainingRunner:
                     "global_step": global_step,
                     "epoch": config.num_train_epochs,
                     "optimizer_state": "not-saved",
-                    "scheduler_state": "not-used",
+                    "scheduler_state": "linear-warmup-decay-not-saved",
                     "rng_state": "seed-reproducible",
                     "config_fingerprint": config.fingerprint,
                     "dataset_fingerprint": fingerprint,
@@ -633,12 +654,12 @@ tokenizer_path = "tokenizer"
 source = "derived-from:{config.base_model_id}"
 source_revision = "{config.base_revision}"
 license = "{config.base_license}"
-context_length = {config.max_sequence_length}
+context_length = {config.model_context_length}
 default_device = "{config.device}"
 default_dtype = "{config.dtype}"
 quantization = "none"
 capabilities = ["text_generation", "streaming"]
-chat_template_policy = "fallback"
+chat_template_policy = "{config.chat_template_policy}"
 trust_remote_code = false
 local_files_only = true
 parameter_count = {config.parameter_count}

@@ -1,6 +1,5 @@
 import json
 import re
-import time
 import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -11,6 +10,8 @@ from lina_core.core.exceptions import EvaluationError
 from lina_core.inference.request import ChatMessage, ChatRole, InferenceRequest
 from lina_core.inference.sampling import GenerationOptions
 from lina_core.models.base import ModelProvider
+from lina_core.security.limits import ResourceLimits
+from lina_core.security.paths import safe_resolve
 
 _SPACE = re.compile(r"\s+")
 _WORD = re.compile(r"[^\wçğıöşü]+", re.IGNORECASE)
@@ -212,8 +213,8 @@ def compare_behavior_models(
     max_new_tokens: int = 96,
     seed: int = 42,
 ) -> BehaviorComparisonReport:
-    if len(providers) < 2:
-        raise EvaluationError("Karşılaştırma en az iki model gerektirir.")
+    if not providers:
+        raise EvaluationError("Değerlendirme en az bir model gerektirir.")
     by_sample: dict[str, list[BehaviorModelOutput]] = {sample.sample_id: [] for sample in samples}
     for provider in providers:
         provider.load()
@@ -254,6 +255,16 @@ def normalize_text(value: str) -> str:
     return _SPACE.sub(" ", _WORD.sub(" ", folded)).strip()
 
 
+def write_behavior_report(report: BehaviorComparisonReport, root: Path, filename: str) -> Path:
+    target = safe_resolve(root, filename)
+    payload = report.to_json() + "\n"
+    if len(payload.encode("utf-8")) > ResourceLimits().max_report_size:
+        raise EvaluationError("Behavior raporu boyut sınırını aşıyor.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(payload, encoding="utf-8")
+    return target
+
+
 def _generate(
     provider: ModelProvider,
     sample: BehaviorSample,
@@ -261,7 +272,6 @@ def _generate(
     max_new_tokens: int,
     seed: int,
 ) -> BehaviorModelOutput:
-    started = time.perf_counter()
     response = provider.generate(
         InferenceRequest(
             (ChatMessage(ChatRole.USER, sample.prompt),),
@@ -274,7 +284,7 @@ def _generate(
         response.text,
         response.usage.prompt_tokens,
         response.usage.completion_tokens,
-        time.perf_counter() - started,
+        response.latency,
         bool(response.text.strip()),
         assess_behavior(sample, response.text),
     )
