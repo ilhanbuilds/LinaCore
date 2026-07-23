@@ -397,6 +397,7 @@ def generate_holdout_records() -> list[dict[str, object]]:
                     "category": category.slug,
                     "language": "en" if index == 2 else "tr",
                     "required_concepts": [list(group) for group in category.required_concepts],
+                    "normalized_answers": [],
                     "forbidden_claims": list(category.forbidden_claims),
                     "critical": category.critical,
                     "human_review": None,
