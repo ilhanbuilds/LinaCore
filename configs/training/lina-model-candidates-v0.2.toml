@@ -1,0 +1,56 @@
+[[candidate]]
+model_id = "HuggingFaceTB/SmolLM2-135M"
+revision = "93efa2f097d58c2a74874c7e644dbc9b0cee75a2"
+license = "Apache-2.0"
+parameter_count = 134515008
+multilingual_rating = 1
+context_length = 8192
+architecture = "SmolLM2ForCausalLM"
+chat_template = true
+transformers_compatible = true
+lora_compatible = true
+gguf_convertible = true
+estimated_download_gb = 0.27
+estimated_inference_ram_gb = 0.8
+cpu_inference = "fast"
+source_url = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M"
+license_url = "https://huggingface.co/HuggingFaceTB/SmolLM2-135M/blob/main/LICENSE"
+limitation = "Kapasite ve Türkçe instruction davranışı v0.1 deneyinde yetersiz kaldı."
+
+[[candidate]]
+model_id = "HuggingFaceTB/SmolLM2-360M-Instruct"
+revision = "c15f933c73438218a2bc078446c513173cc4f06a"
+license = "Apache-2.0"
+parameter_count = 361821120
+multilingual_rating = 1
+context_length = 8192
+architecture = "LlamaForCausalLM"
+chat_template = true
+transformers_compatible = true
+lora_compatible = true
+gguf_convertible = true
+estimated_download_gb = 0.73
+estimated_inference_ram_gb = 1.8
+cpu_inference = "moderate"
+source_url = "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct"
+license_url = "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct/blob/main/LICENSE"
+limitation = "Resmi model kartı İngilizce odaklıdır."
+
+[[candidate]]
+model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+revision = "7ae557604adf67be50417f59c2c2f167def9a775"
+license = "Apache-2.0"
+parameter_count = 494032768
+multilingual_rating = 3
+context_length = 32768
+architecture = "Qwen2ForCausalLM"
+chat_template = true
+transformers_compatible = true
+lora_compatible = true
+gguf_convertible = true
+estimated_download_gb = 0.99
+estimated_inference_ram_gb = 2.3
+cpu_inference = "moderate-slow"
+source_url = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct"
+license_url = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct/blob/main/LICENSE"
+limitation = "CPU LoRA süresi smoke benchmark ile sınırlandırılmalıdır."
