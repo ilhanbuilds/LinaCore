@@ -3,7 +3,7 @@ import json
 import random
 import re
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -203,6 +203,70 @@ def split_sft_dataset(
         tuple(shuffled[train_count : train_count + validation_count]),
         tuple(shuffled[train_count + validation_count :]),
     )
+
+
+def split_sft_dataset_grouped(
+    records: list[SFTRecord],
+    *,
+    seed: int,
+    train_ratio: float,
+    validation_ratio: float,
+    test_ratio: float,
+) -> SFTDatasetSplit:
+    """Split by category while keeping related template groups together."""
+    _validate_split_ratios(train_ratio, validation_ratio, test_ratio)
+    categories: dict[str, list[SFTRecord]] = defaultdict(list)
+    for record in records:
+        categories[record.category].append(record)
+
+    split_items: dict[str, list[SFTRecord]] = {
+        "train": [],
+        "validation": [],
+        "test": [],
+    }
+    for category, category_records in sorted(categories.items()):
+        groups: dict[str, list[SFTRecord]] = defaultdict(list)
+        for record in category_records:
+            group = str(record.metadata.get("template_group") or record.record_id)
+            groups[group].append(record)
+        ordered_groups = sorted(groups.items())
+        random.Random(f"{seed}:{category}").shuffle(ordered_groups)
+        validation_groups = max(1, round(len(ordered_groups) * validation_ratio))
+        test_groups = max(1, round(len(ordered_groups) * test_ratio))
+        if validation_groups + test_groups >= len(ordered_groups):
+            raise DatasetError(
+                f"{category} kategorisi grouped split için yeterli template grubu içermiyor."
+            )
+        train_groups = len(ordered_groups) - validation_groups - test_groups
+        destinations = (
+            ("train", ordered_groups[:train_groups]),
+            (
+                "validation",
+                ordered_groups[train_groups : train_groups + validation_groups],
+            ),
+            ("test", ordered_groups[train_groups + validation_groups :]),
+        )
+        for destination, selected_groups in destinations:
+            for _, group_records in selected_groups:
+                split_items[destination].extend(group_records)
+
+    for destination, items in split_items.items():
+        random.Random(f"{seed}:{destination}").shuffle(items)
+    return SFTDatasetSplit(
+        tuple(split_items["train"]),
+        tuple(split_items["validation"]),
+        tuple(split_items["test"]),
+    )
+
+
+def _validate_split_ratios(
+    train_ratio: float, validation_ratio: float, test_ratio: float
+) -> None:
+    if (
+        min(train_ratio, validation_ratio, test_ratio) <= 0
+        or abs(train_ratio + validation_ratio + test_ratio - 1) > 1e-9
+    ):
+        raise DatasetError("Grouped split oranları pozitif olmalı ve toplamı 1 olmalıdır.")
 
 
 def dataset_report(path: Path, records: list[SFTRecord]) -> SFTDatasetReport:

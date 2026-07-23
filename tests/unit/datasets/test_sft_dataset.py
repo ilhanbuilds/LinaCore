@@ -10,6 +10,7 @@ from lina_core.datasets.sft import (
     load_sft_dataset,
     render_record,
     split_sft_dataset,
+    split_sft_dataset_grouped,
 )
 
 
@@ -65,6 +66,43 @@ def test_split_is_deterministic(tmp_path: Path) -> None:
     )
     assert first == second
     assert (len(first.train), len(first.validation), len(first.test)) == (8, 1, 1)
+
+
+def test_grouped_split_preserves_categories_and_template_groups(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.jsonl"
+    items: list[dict[str, object]] = []
+    for category in ("identity", "privacy"):
+        for group_index in range(10):
+            for variant in range(2):
+                item = _record(
+                    f"{category}-{group_index}-{variant}",
+                    f"{category} prompt {group_index} variant {variant}",
+                )
+                item["category"] = category
+                item["metadata"] = {"template_group": f"{category}-{group_index}"}
+                items.append(item)
+    _write(path, items)
+    split = split_sft_dataset_grouped(
+        load_sft_dataset(path),
+        seed=42,
+        train_ratio=0.8,
+        validation_ratio=0.1,
+        test_ratio=0.1,
+    )
+
+    assert (len(split.train), len(split.validation), len(split.test)) == (32, 4, 4)
+    for records in (split.train, split.validation, split.test):
+        assert {record.category for record in records} == {"identity", "privacy"}
+    group_destinations: dict[str, set[str]] = {}
+    for destination, records in (
+        ("train", split.train),
+        ("validation", split.validation),
+        ("test", split.test),
+    ):
+        for record in records:
+            group = str(record.metadata["template_group"])
+            group_destinations.setdefault(group, set()).add(destination)
+    assert all(len(destinations) == 1 for destinations in group_destinations.values())
 
 
 @pytest.mark.parametrize(
