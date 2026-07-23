@@ -10,6 +10,12 @@ from lina_core.training.runner import TrainingRunner
 CONFIG = Path("configs/training/lina-135m-sft-v0.1.toml")
 
 
+def _copy_training_dataset(workspace: Path, dataset_path: str) -> None:
+    target = workspace / dataset_path
+    target.parent.mkdir(parents=True)
+    target.write_text(Path(dataset_path).read_text(encoding="utf-8"), encoding="utf-8")
+
+
 def test_training_config_and_profiles_are_typed() -> None:
     config = load_training_config(CONFIG)
     assert config.local_files_only and not config.allow_download
@@ -20,13 +26,32 @@ def test_training_config_and_profiles_are_typed() -> None:
     assert config.fingerprint.startswith("sha256:")
 
 
-def test_training_plan_does_not_start_training() -> None:
+def test_training_plan_does_not_start_training(tmp_path: Path) -> None:
     config = load_training_config(CONFIG)
-    config = replace(config, output_dir="models/unit-test-training-plan")
-    plan = TrainingRunner(Path.cwd()).plan(config)
+    _copy_training_dataset(tmp_path, config.dataset_path)
+    (tmp_path / "base-model").mkdir()
+    config = replace(
+        config,
+        base_model="base-model",
+        output_dir="models/unit-test-training-plan",
+    )
+    plan = TrainingRunner(tmp_path).plan(config)
     assert plan.record_count == 24
     assert not plan.download_required
     assert plan.method == "full-supervised-fine-tuning"
+
+
+def test_training_plan_rejects_missing_local_model(tmp_path: Path) -> None:
+    config = load_training_config(CONFIG)
+    _copy_training_dataset(tmp_path, config.dataset_path)
+    config = replace(
+        config,
+        base_model="missing-base-model",
+        output_dir="models/unit-test-training-plan",
+    )
+
+    with pytest.raises(TrainingError, match="Base model local değil"):
+        TrainingRunner(tmp_path).plan(config)
 
 
 @pytest.mark.parametrize(
