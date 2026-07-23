@@ -78,5 +78,5 @@ warn_unused_ignores = true
 no_implicit_optional = true
 
 [[tool.mypy.overrides]]
-module = ["numpy", "numpy.*", "torch", "torch.*", "transformers", "transformers.*"]
+module = ["numpy", "numpy.*", "peft", "peft.*", "torch", "torch.*", "transformers", "transformers.*"]
 ignore_missing_imports = true

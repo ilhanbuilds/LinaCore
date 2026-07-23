@@ -15,6 +15,14 @@ class TrainingConfig:
     base_revision: str = ""
     dataset_path: str = ""
     model_id: str = ""
+    output_model_id: str = "lina-135m-sft-v0.1"
+    display_name: str = "Lina-135M-SFT-v0.1"
+    model_version: str = "0.1"
+    dataset_version: str = "0.1"
+    base_model_id: str = "HuggingFaceTB/SmolLM2-135M"
+    base_license: str = "Apache-2.0"
+    architecture: str = "SmolLM2ForCausalLM"
+    parameter_count: int = 135_000_000
     tokenizer_id: str = ""
     dataset_manifest: str = ""
     dataset_format: str = "jsonl"
@@ -25,6 +33,7 @@ class TrainingConfig:
     train_split: float = 0.8
     validation_split: float = 0.1
     test_split: float = 0.1
+    split_strategy: str = "random"
     num_train_epochs: int = 1
     max_steps: int = 0
     learning_rate: float = 5e-5
@@ -39,6 +48,11 @@ class TrainingConfig:
     gradient_checkpointing: bool = False
     use_lora: bool = False
     merge_adapter: bool = False
+    lora_r: int = 8
+    lora_alpha: int = 16
+    lora_dropout: float = 0.05
+    lora_target_modules: tuple[str, ...] = ()
+    early_stopping_patience: int = 0
     report_to: str = "none"
     allow_download: bool = False
     trust_remote_code: bool = False
@@ -52,6 +66,8 @@ class TrainingConfig:
     evaluation_interval: int | None = None
 
     def __post_init__(self) -> None:
+        if isinstance(self.lora_target_modules, list):
+            object.__setattr__(self, "lora_target_modules", tuple(self.lora_target_modules))
         if not self.base_model and self.model_id:
             object.__setattr__(self, "base_model", self.model_id)
         if not self.base_revision and self.model_id:
@@ -117,8 +133,16 @@ class TrainingConfig:
             raise TrainingError("Remote model erişimi için allow_download açık olmalıdır.")
         if self.report_to != "none":
             raise TrainingError("Harici training telemetry bu sürümde desteklenmiyor.")
-        if self.use_lora or self.merge_adapter:
-            raise TrainingError("LoRA typed config foundation'dır; bu sürümde full SFT kullanın.")
+        if self.split_strategy not in {"random", "grouped"}:
+            raise TrainingError("Desteklenmeyen dataset split stratejisi.")
+        if self.merge_adapter and not self.use_lora:
+            raise TrainingError("Adapter birleştirme yalnız LoRA ile kullanılabilir.")
+        if self.use_lora and (
+            self.lora_r <= 0 or self.lora_alpha <= 0 or not 0 <= self.lora_dropout < 1
+        ):
+            raise TrainingError("LoRA ayarları geçersiz.")
+        if self.parameter_count <= 0 or self.early_stopping_patience < 0:
+            raise TrainingError("Model metadata veya early stopping ayarı geçersiz.")
 
     @property
     def fingerprint(self) -> str:
@@ -132,7 +156,11 @@ def apply_training_profile(config: TrainingConfig, profile: str) -> TrainingConf
     if profile == "quick":
         return replace(config, max_steps=0, num_train_epochs=3, max_sequence_length=128)
     if profile == "quality":
-        return replace(config, max_steps=0, num_train_epochs=3, max_sequence_length=256)
+        return replace(
+            config,
+            num_train_epochs=max(3, config.num_train_epochs),
+            max_sequence_length=max(256, config.max_sequence_length),
+        )
     raise TrainingError(f"Bilinmeyen training profili: {profile}")
 
 

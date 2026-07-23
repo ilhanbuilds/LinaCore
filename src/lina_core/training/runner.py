@@ -19,16 +19,12 @@ from lina_core.datasets.sft import (
     dataset_fingerprint,
     load_sft_dataset,
     split_sft_dataset,
+    split_sft_dataset_grouped,
 )
 from lina_core.datasets.validation import load_manifest
 from lina_core.inference.chat_template import ChatTemplateRenderer
 from lina_core.security.paths import safe_resolve
 from lina_core.training.config import TrainingConfig
-
-BASE_MODEL_ID = "HuggingFaceTB/SmolLM2-135M"
-BASE_LICENSE = "Apache-2.0"
-LINA_MODEL_ID = "lina-135m-sft-v0.1"
-LINA_MODEL_NAME = "Lina-135M-SFT-v0.1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +62,10 @@ class TrainingResult:
     manifest_path: str
     model_card_path: str
     metadata_path: str
+    training_method: str = "full-supervised-fine-tuning"
+    trainable_parameters: int = 0
+    total_parameters: int = 0
+    best_step: int = 0
 
 
 class TrainingRunner:
@@ -89,14 +89,14 @@ class TrainingRunner:
             raise TrainingError("Base model local değil; açık download izni verilmedi.")
         return TrainingPlan(
             config.run_name,
-            BASE_MODEL_ID,
+            config.base_model_id,
             config.base_revision,
             dataset_path.name,
             dataset_fingerprint(records),
             len(records),
             config.device,
             config.dtype,
-            "full-supervised-fine-tuning",
+            "lora-supervised-fine-tuning" if config.use_lora else "full-supervised-fine-tuning",
             config.batch_size,
             config.num_train_epochs,
             config.max_steps,
@@ -109,7 +109,7 @@ class TrainingRunner:
                 "dataset-validation",
                 "tokenization",
                 "training",
-                "validation",
+                "validation-and-best-checkpoint",
                 "artifact-save",
                 "metadata",
             ),
@@ -164,6 +164,10 @@ class TrainingRunner:
                 (output / "linacore-model.toml").as_posix(),
                 (output / "MODEL_CARD.md").as_posix(),
                 (output / "training-metadata.json").as_posix(),
+                result.training_method,
+                result.trainable_parameters,
+                result.total_parameters,
+                result.best_step,
             )
         except Exception:
             (temporary / "FAILED").write_text("Training tamamlanmadı.\n", encoding="utf-8")
@@ -189,7 +193,10 @@ class TrainingRunner:
         torch.manual_seed(config.seed)
         dataset_path = safe_resolve(self.workspace, config.dataset_path)
         records = load_sft_dataset(dataset_path)
-        split = split_sft_dataset(
+        split_function = (
+            split_sft_dataset_grouped if config.split_strategy == "grouped" else split_sft_dataset
+        )
+        split = split_function(
             records,
             seed=config.seed,
             train_ratio=config.train_split,
@@ -223,37 +230,132 @@ class TrainingRunner:
             **{dtype_keyword: dtype},
         )
         model.to(config.device)
+        lora_targets: tuple[str, ...] = ()
+        if config.use_lora:
+            try:
+                from peft import LoraConfig, TaskType, get_peft_model
+            except ImportError as exc:
+                raise TrainingError("LoRA için training-lora optional dependency gerekli.") from exc
+            lora_targets = config.lora_target_modules or self._discover_lora_targets(model, torch)
+            model = get_peft_model(
+                model,
+                LoraConfig(
+                    task_type=TaskType.CAUSAL_LM,
+                    r=config.lora_r,
+                    lora_alpha=config.lora_alpha,
+                    lora_dropout=config.lora_dropout,
+                    target_modules=list(lora_targets),
+                    bias="none",
+                ),
+            )
         model.train()
         if config.gradient_checkpointing:
             model.gradient_checkpointing_enable()
+            if hasattr(model, "enable_input_require_grads"):
+                model.enable_input_require_grads()
+        trainable_parameters, total_parameters = self._parameter_counts(model)
         optimizer = torch.optim.AdamW(
-            model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay
+            (parameter for parameter in model.parameters() if parameter.requires_grad),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
         )
         train_items = list(split.train)
         losses: list[float] = []
+        validation_curve: list[dict[str, float | int]] = []
         global_step = 0
+        optimizer_steps = 0
+        best_step = 0
+        best_validation_loss = math.inf
+        best_state: dict[str, Any] | None = None
+        evaluations_without_improvement = 0
         optimizer.zero_grad(set_to_none=True)
-        for _epoch in range(config.num_train_epochs):
+        stop_training = False
+        for epoch_index in range(config.num_train_epochs):
+            random.Random(config.seed + epoch_index).shuffle(train_items)
             for start_index in range(0, len(train_items), config.batch_size):
                 batch = train_items[start_index : start_index + config.batch_size]
                 encoded = self._encode(tokenizer, batch, config.max_sequence_length, torch)
+                encoded = {key: value.to(config.device) for key, value in encoded.items()}
                 outputs = model(**encoded)
                 loss = outputs.loss / config.gradient_accumulation_steps
                 loss.backward()
                 losses.append(float(outputs.loss.detach().cpu()))
-                if (global_step + 1) % config.gradient_accumulation_steps == 0:
+                global_step += 1
+                accumulation_complete = global_step % config.gradient_accumulation_steps == 0
+                final_batch = start_index + config.batch_size >= len(train_items)
+                if accumulation_complete or final_batch:
                     optimizer.step()
                     optimizer.zero_grad(set_to_none=True)
-                global_step += 1
+                    optimizer_steps += 1
+                if global_step % config.evaluation_steps == 0:
+                    current_validation = self._validation_loss(
+                        model,
+                        tokenizer,
+                        list(split.validation),
+                        config.max_sequence_length,
+                        torch,
+                        config.device,
+                    )
+                    if current_validation is not None:
+                        validation_curve.append(
+                            {
+                                "step": global_step,
+                                "epoch": epoch_index + 1,
+                                "loss": current_validation,
+                            }
+                        )
+                        if current_validation < best_validation_loss:
+                            best_validation_loss = current_validation
+                            best_step = global_step
+                            best_state = self._snapshot_trainable(model)
+                            evaluations_without_improvement = 0
+                        else:
+                            evaluations_without_improvement += 1
+                    if (
+                        config.early_stopping_patience
+                        and evaluations_without_improvement >= config.early_stopping_patience
+                    ):
+                        stop_training = True
+                        break
+                if global_step % config.save_steps == 0:
+                    self._save_checkpoint(
+                        model,
+                        temporary / "checkpoints",
+                        global_step,
+                        config.save_total_limit,
+                    )
                 if config.max_steps and global_step >= config.max_steps:
+                    stop_training = True
                     break
-            if config.max_steps and global_step >= config.max_steps:
+            if stop_training:
                 break
         if not losses:
             raise TrainingError("Training step üretilmedi.")
         validation_loss = self._validation_loss(
-            model, tokenizer, list(split.validation), config.max_sequence_length, torch
+            model,
+            tokenizer,
+            list(split.validation),
+            config.max_sequence_length,
+            torch,
+            config.device,
         )
+        if validation_loss is not None and validation_loss < best_validation_loss:
+            best_validation_loss = validation_loss
+            best_step = global_step
+            best_state = self._snapshot_trainable(model)
+            validation_curve.append(
+                {"step": global_step, "epoch": epoch_index + 1, "loss": validation_loss}
+            )
+        if best_state is not None:
+            self._restore_trainable(model, best_state)
+            validation_loss = best_validation_loss
+        training_method = (
+            "LoRA supervised fine-tuning (assistant-only selective causal LM loss)"
+            if config.use_lora
+            else "Full supervised fine-tuning (assistant-only selective causal LM loss)"
+        )
+        if config.use_lora and config.merge_adapter:
+            model = model.merge_and_unload()
         model_dir = temporary / "model"
         tokenizer_dir = temporary / "tokenizer"
         report_dir = temporary / "reports"
@@ -270,15 +372,22 @@ class TrainingRunner:
             else None
         )
         metadata = {
-            "model_name": LINA_MODEL_NAME,
-            "model_id": LINA_MODEL_ID,
-            "lina_model_version": "0.1",
-            "base_model": BASE_MODEL_ID,
+            "model_name": config.display_name,
+            "model_id": config.output_model_id,
+            "lina_model_version": config.model_version,
+            "base_model": config.base_model_id,
             "base_revision": config.base_revision,
-            "base_license": BASE_LICENSE,
-            "training_method": "Supervised Fine-Tuning (assistant-only selective causal LM loss)",
-            "dataset_version": "0.1",
+            "base_license": config.base_license,
+            "training_method": training_method,
+            "dataset_version": config.dataset_version,
             "dataset_fingerprint": fingerprint,
+            "dataset_records": len(records),
+            "split": {
+                "strategy": config.split_strategy,
+                "train": len(split.train),
+                "validation": len(split.validation),
+                "test": len(split.test),
+            },
             "created_at": datetime.now(UTC).isoformat(),
             "python_version": sys.version.split()[0],
             "torch_version": torch.__version__,
@@ -293,17 +402,37 @@ class TrainingRunner:
             "learning_rate": config.learning_rate,
             "max_sequence_length": config.max_sequence_length,
             "training_steps": global_step,
+            "optimizer_steps": optimizer_steps,
             "final_training_loss": losses[-1],
             "validation_loss": validation_loss,
             "perplexity": perplexity,
-            "artifact_format": "Transformers Safetensors merged full model",
-            "adapter": False,
+            "best_step": best_step,
+            "training_curve": losses,
+            "validation_curve": validation_curve,
+            "artifact_format": (
+                "Transformers Safetensors merged LoRA model"
+                if config.use_lora and config.merge_adapter
+                else "Transformers Safetensors model or adapter"
+            ),
+            "adapter": config.use_lora,
+            "adapter_merged": config.use_lora and config.merge_adapter,
+            "lora": {
+                "r": config.lora_r,
+                "alpha": config.lora_alpha,
+                "dropout": config.lora_dropout,
+                "target_modules": list(lora_targets),
+            }
+            if config.use_lora
+            else None,
+            "trainable_parameters": trainable_parameters,
+            "total_parameters": total_parameters,
+            "trainable_percentage": trainable_parameters / total_parameters * 100,
             "gguf_export_status": "not-exported",
             "platform": platform.system(),
             "config_fingerprint": config.fingerprint,
             "known_limitations": [
-                "Küçük sentetik dataset ve kısa eğitim nedeniyle kalite deneysel düzeydedir.",
-                "Model sıfırdan pretrained değildir; SmolLM2-135M türevidir.",
+                "Sentetik dataset nedeniyle gerçek kullanım kalitesi ayrıca izlenmelidir.",
+                f"Model sıfırdan pretrained değildir; {config.base_model_id} türevidir.",
             ],
         }
         (temporary / "training-metadata.json").write_text(
@@ -333,6 +462,25 @@ class TrainingRunner:
             + "\n",
             encoding="utf-8",
         )
+        dataset_metadata = {
+            "dataset_version": config.dataset_version,
+            "record_count": len(records),
+            "category_count": len({record.category for record in records}),
+            "languages": dict(
+                sorted(
+                    {
+                        language: sum(record.language == language for record in records)
+                        for language in {record.language for record in records}
+                    }.items()
+                )
+            ),
+            "fingerprint": fingerprint,
+            "split": metadata["split"],
+        }
+        (temporary / "dataset-metadata.json").write_text(
+            json.dumps(dataset_metadata, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
         self._write_manifest(temporary, config, fingerprint)
         self._write_model_card(temporary, metadata, plan.record_count)
         checksums: dict[str, str] = {}
@@ -346,7 +494,7 @@ class TrainingRunner:
             json.dumps(checksums, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         return TrainingResult(
-            LINA_MODEL_ID,
+            config.output_model_id,
             temporary.as_posix(),
             fingerprint,
             duration,
@@ -358,13 +506,17 @@ class TrainingRunner:
             "linacore-model.toml",
             "MODEL_CARD.md",
             "training-metadata.json",
+            plan.method,
+            trainable_parameters,
+            total_parameters,
+            best_step,
         )
 
     @staticmethod
     def _encode(
         tokenizer: Any, records: list[SFTRecord], max_length: int, torch: Any
     ) -> dict[str, Any]:
-        renderer = ChatTemplateRenderer(fallback_enabled=True)
+        renderer = ChatTemplateRenderer(tokenizer, fallback_enabled=True)
         texts = [
             renderer.render(record.messages, add_generation_prompt=False).text
             + (tokenizer.eos_token or "")
@@ -392,7 +544,13 @@ class TrainingRunner:
 
     @classmethod
     def _validation_loss(
-        cls, model: Any, tokenizer: Any, records: list[SFTRecord], max_length: int, torch: Any
+        cls,
+        model: Any,
+        tokenizer: Any,
+        records: list[SFTRecord],
+        max_length: int,
+        torch: Any,
+        device: str = "cpu",
     ) -> float | None:
         if not records:
             return None
@@ -400,24 +558,81 @@ class TrainingRunner:
         values: list[float] = []
         with torch.no_grad():
             for record in records:
-                outputs = model(**cls._encode(tokenizer, [record], max_length, torch))
+                encoded = cls._encode(tokenizer, [record], max_length, torch)
+                encoded = {key: value.to(device) for key, value in encoded.items()}
+                outputs = model(**encoded)
                 values.append(float(outputs.loss.detach().cpu()))
         model.train()
         return sum(values) / len(values)
 
     @staticmethod
+    def _discover_lora_targets(model: Any, torch: Any) -> tuple[str, ...]:
+        preferred = {
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+            "c_attn",
+            "c_proj",
+        }
+        discovered = {
+            name.rsplit(".", maxsplit=1)[-1]
+            for name, module in model.named_modules()
+            if isinstance(module, torch.nn.Linear) and name.rsplit(".", maxsplit=1)[-1] in preferred
+        }
+        if not discovered:
+            raise TrainingError("Model mimarisinde desteklenen LoRA linear target bulunamadı.")
+        return tuple(sorted(discovered))
+
+    @staticmethod
+    def _parameter_counts(model: Any) -> tuple[int, int]:
+        total = sum(parameter.numel() for parameter in model.parameters())
+        trainable = sum(
+            parameter.numel() for parameter in model.parameters() if parameter.requires_grad
+        )
+        if not total or not trainable:
+            raise TrainingError("Trainable model parametresi bulunamadı.")
+        return trainable, total
+
+    @staticmethod
+    def _snapshot_trainable(model: Any) -> dict[str, Any]:
+        return {
+            name: parameter.detach().cpu().clone()
+            for name, parameter in model.named_parameters()
+            if parameter.requires_grad
+        }
+
+    @staticmethod
+    def _restore_trainable(model: Any, state: dict[str, Any]) -> None:
+        parameters = dict(model.named_parameters())
+        for name, value in state.items():
+            parameters[name].data.copy_(value.to(parameters[name].device))
+
+    @staticmethod
+    def _save_checkpoint(model: Any, root: Path, step: int, limit: int) -> None:
+        root.mkdir(exist_ok=True)
+        checkpoint = root / f"checkpoint-{step:06d}"
+        model.save_pretrained(checkpoint, safe_serialization=True)
+        checkpoints = sorted(root.glob("checkpoint-*"))
+        for expired in checkpoints[:-limit]:
+            shutil.rmtree(expired)
+
+    @staticmethod
     def _write_manifest(root: Path, config: TrainingConfig, fingerprint: str) -> None:
         content = f'''schema_version = 1
-model_id = "{LINA_MODEL_ID}"
-display_name = "{LINA_MODEL_NAME}"
-version = "0.1"
+model_id = "{config.output_model_id}"
+display_name = "{config.display_name}"
+version = "{config.model_version}"
 backend = "transformers"
-architecture = "SmolLM2ForCausalLM"
+architecture = "{config.architecture}"
 model_path = "model"
 tokenizer_path = "tokenizer"
-source = "derived-from:{BASE_MODEL_ID}"
+source = "derived-from:{config.base_model_id}"
 source_revision = "{config.base_revision}"
-license = "Apache-2.0"
+license = "{config.base_license}"
 context_length = {config.max_sequence_length}
 default_device = "{config.device}"
 default_dtype = "{config.dtype}"
@@ -426,19 +641,19 @@ capabilities = ["text_generation", "streaming"]
 chat_template_policy = "fallback"
 trust_remote_code = false
 local_files_only = true
-parameter_count = 135000000
-notes = "Lina SFT v0.1; dataset {fingerprint}; assistant-only selective loss."
+parameter_count = {config.parameter_count}
+notes = "Lina SFT v{config.dataset_version}; dataset {fingerprint}; assistant-only selective loss."
 '''
         (root / "linacore-model.toml").write_text(content, encoding="utf-8")
 
     @staticmethod
     def _write_model_card(root: Path, metadata: dict[str, Any], record_count: int) -> None:
-        text = f"""# {LINA_MODEL_NAME}
+        text = f"""# {metadata["model_name"]}
 
 ## Model özeti
 
 Bu model sıfırdan pretrained bir foundation model değildir. Apache-2.0 lisanslı
-`{BASE_MODEL_ID}` revision `{metadata["base_revision"]}` üzerine Lina'ya özel sentetik
+`{metadata["base_model"]}` revision `{metadata["base_revision"]}` üzerine Lina'ya özel sentetik
 veriyle supervised fine-tuning uygulanmış deneysel bir türevdir.
 
 ## Amaçlanan kullanım
@@ -449,7 +664,8 @@ Yüksek riskli kararlar, güvenlik garantisi veya doğrulanmamış uzmanlık iç
 ## Eğitim
 
 - Yöntem: {metadata["training_method"]}
-- Dataset: Lina SFT v0.1, {record_count} sentetik kayıt, CC0-1.0
+- Dataset: Lina SFT v{metadata["dataset_version"]}, {record_count} sentetik kayıt, CC0-1.0
+- Split: {metadata["split"]["train"]}/{metadata["split"]["validation"]}/{metadata["split"]["test"]}
 - Fingerprint: `{metadata["dataset_fingerprint"]}`
 - Donanım: {metadata["device"]}, {metadata["dtype"]}
 - Seed/step: {metadata["seed"]} / {metadata["training_steps"]}
@@ -479,7 +695,7 @@ hesaplanmıştır.
 ## LinaCore ile çalıştırma
 
 ```console
-lina-core inference generate --model {LINA_MODEL_ID} --prompt "Merhaba, sen kimsin?"
+lina-core inference generate --model {metadata["model_id"]} --prompt "Merhaba, sen kimsin?"
 ```
 
 GGUF henüz export edilmemiştir. Reproducibility ayrıntıları `training-metadata.json` içindedir.
