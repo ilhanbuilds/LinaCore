@@ -316,7 +316,7 @@ artifact’ler ignore edilir.
 | Model yönetimi | [Modeller](docs/models.md) · [Compatibility](docs/model-compatibility.md) |
 | Dataset | [Dataset](docs/datasets.md) |
 | Training | [Training](docs/training.md) · [İlk Lina modeli](docs/first-lina-model.md) |
-| Evaluation | [Evaluation](docs/evaluation.md) · [Lina Model v0.2](docs/lina-model-v0.2.md) |
+| Evaluation | [Evaluation](docs/evaluation.md) · [Lina Model v0.2](docs/lina-model-v0.2.md) · [v0.2 recovery teşhisi](docs/lina-model-v0.2-recovery.md) |
 | GGUF | [GGUF export](docs/gguf-export.md) |
 | Donanım ve config | [Hardware](docs/hardware.md) · [Configuration](docs/configuration.md) |
 | Güvenlik | [Security](docs/security.md) · [Security policy](SECURITY.md) |
