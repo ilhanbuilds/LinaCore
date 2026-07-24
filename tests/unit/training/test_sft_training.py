@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 
 from lina_core.core.exceptions import TrainingError
+from lina_core.datasets.sft import SFTRecord
+from lina_core.inference.request import ChatMessage, ChatRole
 from lina_core.training.config import apply_training_profile, load_training_config
 from lina_core.training.runner import TrainingRunner
 
@@ -27,6 +29,50 @@ class _ModelDouble:
             ("model.layers.0.self_attn.v_proj", _Linear()),
             ("lm_head", _Linear()),
         ]
+
+
+class _CanonicalTokenizerDouble:
+    chat_template = "canonical"
+    eos_token = "~"
+    eos_token_id = ord("~")
+
+    def apply_chat_template(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tokenize: bool,
+        add_generation_prompt: bool,
+    ) -> str:
+        assert not tokenize
+        rendered = "".join(
+            f"<{message['role']}>{message['content']}</{message['role']}>~"
+            for message in messages
+        )
+        if add_generation_prompt:
+            rendered += "<assistant>"
+        return rendered
+
+    def __call__(self, text: str, *, add_special_tokens: bool) -> dict[str, list[int]]:
+        assert not add_special_tokens
+        return {"input_ids": [ord(character) for character in text]}
+
+
+def _multi_turn_record() -> SFTRecord:
+    return SFTRecord(
+        "multi-turn",
+        (
+            ChatMessage(ChatRole.USER, "first question"),
+            ChatMessage(ChatRole.ASSISTANT, "first answer"),
+            ChatMessage(ChatRole.USER, "second question"),
+            ChatMessage(ChatRole.ASSISTANT, "second answer"),
+        ),
+        "diagnostic",
+        "en",
+        "synthetic-test",
+        "CC0-1.0",
+        "approved",
+        {},
+    )
 
 
 def _copy_training_dataset(workspace: Path, dataset_path: str) -> None:
@@ -136,3 +182,45 @@ def test_lora_targets_are_discovered_from_model_architecture() -> None:
     targets = TrainingRunner._discover_lora_targets(_ModelDouble(), _TorchDouble())
 
     assert targets == ("q_proj", "v_proj")
+
+
+def test_training_tokenization_labels_every_assistant_turn_and_one_eos() -> None:
+    tokenizer = _CanonicalTokenizerDouble()
+    result = TrainingRunner._training_tokenization(
+        tokenizer,
+        _multi_turn_record(),
+        512,
+        fallback_enabled=False,
+    )
+
+    assert len(result.assistant_spans) == 2
+    assert not result.terminal_eos_added
+    assert not result.truncated
+    labeled = [
+        "".join(chr(token) for token in result.token_ids[start:end])
+        for start, end in result.assistant_spans
+    ]
+    assert labeled == ["first answer</assistant>~", "second answer</assistant>~"]
+    assert result.token_ids[-2:] != (tokenizer.eos_token_id, tokenizer.eos_token_id)
+
+
+def test_training_tokenization_masks_assistant_prefix_and_reports_truncation() -> None:
+    tokenizer = _CanonicalTokenizerDouble()
+    complete = TrainingRunner._training_tokenization(
+        tokenizer,
+        _multi_turn_record(),
+        512,
+        fallback_enabled=False,
+    )
+    first_start, _ = complete.assistant_spans[0]
+
+    assert complete.token_ids[first_start] == ord("f")
+
+    truncated = TrainingRunner._training_tokenization(
+        tokenizer,
+        _multi_turn_record(),
+        first_start + 3,
+        fallback_enabled=False,
+    )
+    assert truncated.truncated
+    assert truncated.assistant_spans == ((first_start, first_start + 3),)

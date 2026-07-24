@@ -23,7 +23,9 @@ from lina_core.datasets.sft import (
 )
 from lina_core.datasets.validation import load_manifest
 from lina_core.inference.chat_template import ChatTemplateRenderer
+from lina_core.inference.request import ChatRole
 from lina_core.security.paths import safe_resolve
+from lina_core.tokenizer.consistency import compare_tokenizers
 from lina_core.training.config import TrainingConfig
 
 
@@ -66,6 +68,15 @@ class TrainingResult:
     trainable_parameters: int = 0
     total_parameters: int = 0
     best_step: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingTokenization:
+    text: str
+    token_ids: tuple[int, ...]
+    assistant_spans: tuple[tuple[int, int], ...]
+    terminal_eos_added: bool
+    truncated: bool
 
 
 class TrainingRunner:
@@ -288,7 +299,13 @@ class TrainingRunner:
             for start_index in range(0, len(train_items), config.batch_size):
                 batch = train_items[start_index : start_index + config.batch_size]
                 step_started = time.perf_counter()
-                encoded = self._encode(tokenizer, batch, config.max_sequence_length, torch)
+                encoded = self._encode(
+                    tokenizer,
+                    batch,
+                    config.max_sequence_length,
+                    torch,
+                    fallback_enabled=config.chat_template_policy == "fallback",
+                )
                 encoded = {key: value.to(config.device) for key, value in encoded.items()}
                 outputs = model(**encoded)
                 loss = outputs.loss / config.gradient_accumulation_steps
@@ -380,6 +397,17 @@ class TrainingRunner:
         report_dir.mkdir()
         model.save_pretrained(model_dir, safe_serialization=True)
         tokenizer.save_pretrained(tokenizer_dir)
+        artifact_tokenizer = transformers.AutoTokenizer.from_pretrained(
+            tokenizer_dir,
+            local_files_only=True,
+            trust_remote_code=False,
+        )
+        tokenizer_parity = compare_tokenizers(tokenizer, artifact_tokenizer)
+        if not tokenizer_parity.passed:
+            raise TrainingError(
+                "Kaydedilen tokenizer source ile eşleşmiyor: "
+                + ", ".join(tokenizer_parity.differences)
+            )
         duration = time.perf_counter() - started
         fingerprint = dataset_fingerprint(records)
         perplexity = (
@@ -535,33 +563,92 @@ class TrainingRunner:
 
     @staticmethod
     def _encode(
-        tokenizer: Any, records: list[SFTRecord], max_length: int, torch: Any
+        tokenizer: Any,
+        records: list[SFTRecord],
+        max_length: int,
+        torch: Any,
+        *,
+        fallback_enabled: bool = True,
     ) -> dict[str, Any]:
-        renderer = ChatTemplateRenderer(tokenizer, fallback_enabled=True)
-        texts = [
-            renderer.render(record.messages, add_generation_prompt=False).text
-            + (tokenizer.eos_token or "")
+        items = [
+            TrainingRunner._training_tokenization(
+                tokenizer,
+                record,
+                max_length,
+                fallback_enabled=fallback_enabled,
+            )
             for record in records
         ]
-        prompts = [
-            renderer.render(record.messages[:-1], add_generation_prompt=True).text
-            for record in records
-        ]
-        encoded = tokenizer(
-            texts,
+        encoded = tokenizer.pad(
+            [
+                {
+                    "input_ids": list(item.token_ids),
+                    "attention_mask": [1] * len(item.token_ids),
+                }
+                for item in items
+            ],
             return_tensors="pt",
             padding=True,
-            truncation=True,
-            max_length=max_length,
         )
-        labels = encoded["input_ids"].clone()
-        labels[encoded["attention_mask"] == 0] = -100
-        for index, prompt in enumerate(prompts):
-            prompt_length = len(
-                tokenizer(prompt, truncation=True, max_length=max_length)["input_ids"]
-            )
-            labels[index, :prompt_length] = -100
+        labels = torch.full_like(encoded["input_ids"], -100)
+        for index, item in enumerate(items):
+            for start, end in item.assistant_spans:
+                labels[index, start:end] = encoded["input_ids"][index, start:end]
+            if not item.assistant_spans:
+                raise TrainingError("Truncation assistant loss tokenlarının tamamını kesti.")
         return {**encoded, "labels": labels}
+
+    @staticmethod
+    def _training_tokenization(
+        tokenizer: Any,
+        record: SFTRecord,
+        max_length: int,
+        *,
+        fallback_enabled: bool,
+    ) -> TrainingTokenization:
+        renderer = ChatTemplateRenderer(tokenizer, fallback_enabled=fallback_enabled)
+        text = renderer.render(record.messages, add_generation_prompt=False).text
+        full_untruncated = TrainingRunner._token_ids(tokenizer, text)
+        token_ids = list(full_untruncated[:max_length])
+        terminal_eos_added = False
+        eos_token_id = getattr(tokenizer, "eos_token_id", None)
+        eos_token = getattr(tokenizer, "eos_token", None)
+        rendered_has_terminal_eos = bool(eos_token) and text.rstrip().endswith(str(eos_token))
+        if (
+            eos_token_id is not None
+            and len(token_ids) < max_length
+            and not rendered_has_terminal_eos
+        ):
+            token_ids.append(int(eos_token_id))
+            terminal_eos_added = True
+        spans: list[tuple[int, int]] = []
+        for message_index, message in enumerate(record.messages):
+            if message.role is not ChatRole.ASSISTANT:
+                continue
+            prefix = renderer.render(
+                record.messages[:message_index], add_generation_prompt=True
+            ).text
+            through = renderer.render(
+                record.messages[: message_index + 1], add_generation_prompt=False
+            ).text
+            start = min(len(TrainingRunner._token_ids(tokenizer, prefix)), len(token_ids))
+            end = min(len(TrainingRunner._token_ids(tokenizer, through)), len(token_ids))
+            if message_index == len(record.messages) - 1 and terminal_eos_added:
+                end = len(token_ids)
+            if start < end:
+                spans.append((start, end))
+        return TrainingTokenization(
+            text,
+            tuple(token_ids),
+            tuple(spans),
+            terminal_eos_added,
+            len(full_untruncated) > max_length,
+        )
+
+    @staticmethod
+    def _token_ids(tokenizer: Any, text: str) -> tuple[int, ...]:
+        encoded = tokenizer(text, add_special_tokens=False)
+        return tuple(int(token) for token in encoded["input_ids"])
 
     @classmethod
     def _validation_loss(
