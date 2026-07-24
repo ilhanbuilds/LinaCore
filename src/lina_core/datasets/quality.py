@@ -9,6 +9,8 @@ from lina_core.inference.request import ChatRole
 
 _SPACE = re.compile(r"\s+")
 _WORD = re.compile(r"[^\wçğıöşü]+", re.IGNORECASE)
+_TOKEN = re.compile(r"[\wçğıöşü]+", re.IGNORECASE)
+_UNEXPECTED_SCRIPTS = ("CYRILLIC", "HIRAGANA", "KATAKANA", "HANGUL", "CJK")
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,30 @@ class LeakageReport:
     @property
     def passed(self) -> bool:
         return not self.leaks
+
+
+@dataclass(frozen=True, slots=True)
+class UnicodeAuditReport:
+    script_counts: tuple[tuple[str, int], ...]
+    unexpected_record_ids: tuple[str, ...]
+    control_record_ids: tuple[str, ...]
+    replacement_record_ids: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        return not (
+            self.unexpected_record_ids
+            or self.control_record_ids
+            or self.replacement_record_ids
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PhraseFrequency:
+    phrase: str
+    count: int
+    category_count: int
+    record_ids: tuple[str, ...]
 
 
 def normalize_similarity_text(value: str) -> str:
@@ -118,6 +144,52 @@ def audit_sft_dataset(
                     (item.record_id,),
                 )
             )
+    unicode_report = audit_dataset_unicode(items)
+    if unicode_report.unexpected_record_ids:
+        issues.append(
+            DatasetQualityIssue(
+                "unexpected-unicode-script",
+                "error",
+                "Assistant cevaplarında beklenmeyen Unicode script bulundu.",
+                unicode_report.unexpected_record_ids,
+            )
+        )
+    if unicode_report.control_record_ids:
+        issues.append(
+            DatasetQualityIssue(
+                "unicode-control-character",
+                "error",
+                "Assistant cevaplarında izin verilmeyen kontrol karakteri bulundu.",
+                unicode_report.control_record_ids,
+            )
+        )
+    if unicode_report.replacement_record_ids:
+        issues.append(
+            DatasetQualityIssue(
+                "unicode-replacement-character",
+                "error",
+                "Assistant cevaplarında Unicode replacement character bulundu.",
+                unicode_report.replacement_record_ids,
+            )
+        )
+    phrase_limit = max(8, round(len(items) * 0.04))
+    repeated_phrases = assistant_phrase_frequencies(
+        items,
+        ngram_size=5,
+        minimum_count=phrase_limit + 1,
+        minimum_categories=2,
+    )
+    for phrase_info in repeated_phrases[:12]:
+        issues.append(
+            DatasetQualityIssue(
+                "cross-category-phrase-overuse",
+                "warning",
+                f"Cevap kalıbı {phrase_info.count} kez ve "
+                f"{phrase_info.category_count} kategoride kullanılmış: "
+                f"{phrase_info.phrase!r}.",
+                phrase_info.record_ids[:8],
+            )
+        )
     template_limit = max(8, round(len(items) * 0.04))
     for template, count in template_counts.items():
         if template and count > template_limit:
@@ -154,6 +226,67 @@ def audit_sft_dataset(
         max(categories.values()),
         tuple(issues),
     )
+
+
+def audit_dataset_unicode(records: Iterable[SFTRecord]) -> UnicodeAuditReport:
+    scripts: Counter[str] = Counter()
+    unexpected: set[str] = set()
+    controls: set[str] = set()
+    replacements: set[str] = set()
+    for record in records:
+        answer = _last_message(record, ChatRole.ASSISTANT)
+        for character in answer:
+            name = unicodedata.name(character, "")
+            script = _unicode_script(name, character)
+            scripts[script] += 1
+            if any(marker in name for marker in _UNEXPECTED_SCRIPTS):
+                unexpected.add(record.record_id)
+            if unicodedata.category(character).startswith("C"):
+                controls.add(record.record_id)
+            if character == "�":
+                replacements.add(record.record_id)
+    return UnicodeAuditReport(
+        tuple(sorted(scripts.items())),
+        tuple(sorted(unexpected)),
+        tuple(sorted(controls)),
+        tuple(sorted(replacements)),
+    )
+
+
+def assistant_phrase_frequencies(
+    records: Iterable[SFTRecord],
+    *,
+    ngram_size: int = 5,
+    minimum_count: int = 2,
+    minimum_categories: int = 1,
+) -> tuple[PhraseFrequency, ...]:
+    counts: Counter[str] = Counter()
+    categories: dict[str, set[str]] = defaultdict(set)
+    record_ids: dict[str, list[str]] = defaultdict(list)
+    for record in records:
+        words = _TOKEN.findall(
+            normalize_similarity_text(_last_message(record, ChatRole.ASSISTANT))
+        )
+        seen_in_record: set[str] = set()
+        for index in range(len(words) - ngram_size + 1):
+            phrase = " ".join(words[index : index + ngram_size])
+            if phrase in seen_in_record:
+                continue
+            seen_in_record.add(phrase)
+            counts[phrase] += 1
+            categories[phrase].add(record.category)
+            record_ids[phrase].append(record.record_id)
+    frequencies = [
+        PhraseFrequency(
+            phrase,
+            count,
+            len(categories[phrase]),
+            tuple(record_ids[phrase]),
+        )
+        for phrase, count in counts.items()
+        if count >= minimum_count and len(categories[phrase]) >= minimum_categories
+    ]
+    return tuple(sorted(frequencies, key=lambda item: (-item.count, item.phrase)))
 
 
 def audit_split_leakage(
@@ -215,6 +348,17 @@ def audit_holdout_leakage(
 def _ngrams(value: str, size: int) -> set[str]:
     padded = f"  {value}  "
     return {padded[index : index + size] for index in range(len(padded) - size + 1)}
+
+
+def _unicode_script(name: str, character: str) -> str:
+    if "LATIN" in name:
+        return "Latin"
+    for marker in _UNEXPECTED_SCRIPTS:
+        if marker in name:
+            return marker.title()
+    if character.isalpha():
+        return "OtherLetter"
+    return "NonLetter"
 
 
 def _last_message(record: SFTRecord, role: ChatRole) -> str:

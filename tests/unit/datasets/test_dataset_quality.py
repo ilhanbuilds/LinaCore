@@ -1,4 +1,6 @@
 from lina_core.datasets.quality import (
+    assistant_phrase_frequencies,
+    audit_dataset_unicode,
     audit_holdout_leakage,
     audit_sft_dataset,
     audit_split_leakage,
@@ -94,3 +96,33 @@ def test_holdout_audit_detects_prompt_paraphrase() -> None:
 
     assert not report.passed
     assert report.leaks[0].code == "holdout-leakage"
+
+
+def test_unicode_audit_rejects_unexpected_scripts_and_replacement_character() -> None:
+    records = [
+        _record("clean", "Nasıl çalışır?", "Yalnız Latin karakterlerle açıklarım."),
+        _record("foreign", "Nasıl çalışır?", "Yanıta スター eklenmemelidir."),
+        _record("replacement", "Nasıl çalışır?", "Bozuk karakter � bulunmamalıdır."),
+    ]
+
+    report = audit_dataset_unicode(records)
+
+    assert not report.passed
+    assert report.unexpected_record_ids == ("foreign",)
+    assert report.replacement_record_ids == ("replacement",)
+
+
+def test_phrase_frequency_finds_cross_category_answer_templates() -> None:
+    repeated = "Sonucu kanıtla ayırır ve bilinmeyeni açıkça söylerim."
+    records = [
+        _record("one", "İlk soru nedir?", repeated, category="identity"),
+        _record("two", "İkinci soru nedir?", repeated, category="privacy"),
+    ]
+
+    frequencies = assistant_phrase_frequencies(
+        records, ngram_size=5, minimum_count=2, minimum_categories=2
+    )
+
+    assert frequencies
+    assert frequencies[0].count == 2
+    assert frequencies[0].category_count == 2

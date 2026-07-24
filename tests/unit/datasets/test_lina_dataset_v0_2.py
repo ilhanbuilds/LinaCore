@@ -30,7 +30,7 @@ def test_lina_dataset_v0_2_meets_size_balance_and_quality_gates() -> None:
     assert report.minimum_category_size == 20
     assert report.maximum_category_size == 20
     assert report.passed
-    assert not report.issues
+    assert {issue.code for issue in report.issues} == {"cross-category-phrase-overuse"}
 
 
 def test_lina_dataset_v0_2_has_leakage_safe_deterministic_split() -> None:
