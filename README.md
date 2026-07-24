@@ -248,11 +248,11 @@ asistan veya production modeli olarak sunulmaz. Ayrıntılar ve training ölçü
 
 ## Test ve kalite
 
-`main` dalındaki CI aynı 374 benzersiz testi iki desteklenen Python sürümünde çalıştırır:
+`main` dalındaki CI aynı 388 benzersiz testi iki desteklenen Python sürümünde çalıştırır:
 
 | Kontrol | Python 3.11 | Python 3.12 |
 | --- | ---: | ---: |
-| Pytest | 374 passed, 1 deselected | 374 passed, 1 deselected |
+| Pytest | 388 passed, 1 deselected | 388 passed, 1 deselected |
 | Ruff | Başarılı | Başarılı |
 | Strict mypy | Başarılı | Başarılı |
 | Compileall | Başarılı | Başarılı |
@@ -260,8 +260,8 @@ asistan veya production modeli olarak sunulmaz. Ayrıntılar ve training ölçü
 | Pip check | Başarılı | Başarılı |
 | Public audit | Başarılı | Başarılı |
 
-İki ortamın toplamında 748 başarılı test çalıştırması vardır; bu sayı 748 farklı test olduğu
-anlamına gelmez. Benzersiz test sayısı 374’tür. `manual_integration` ve `model_integration`
+İki ortamın toplamında 776 başarılı test çalıştırması vardır; bu sayı 776 farklı test olduğu
+anlamına gelmez. Benzersiz test sayısı 388’dir. `manual_integration` ve `model_integration`
 marker’ları gerçek local model, optional ML dependency veya açık kullanıcı onayı gerektirir;
 varsayılan CI akışına dahil değildir.
 
