@@ -16,6 +16,7 @@ from scripts.generate_lina_recovery_dataset_v0_2_1 import (
 SFT_PATH = Path("data/examples/lina_recovery_canary_v0.2.1.jsonl")
 HOLDOUT_PATH = Path("data/examples/lina_recovery_canary_holdout_v0.2.1.jsonl")
 CONFIG_PATH = Path("configs/training/lina-0.5b-sft-v0.2.1-canary.toml")
+SECOND_CONFIG_PATH = Path("configs/training/lina-0.5b-sft-v0.2.1-canary-2.toml")
 
 
 def test_recovery_canary_dataset_is_small_balanced_and_deterministic() -> None:
@@ -51,3 +52,12 @@ def test_recovery_canary_config_uses_lower_learning_rate_and_new_output() -> Non
     assert config.output_model_id == "lina-0.5b-sft-v0.2.1-canary"
     assert config.output_dir == "models/lina-0.5b-sft-v0.2.1-canary"
     assert config.local_files_only and not config.allow_download
+
+
+def test_second_canary_is_bounded_and_uses_separate_output() -> None:
+    config = load_training_config(SECOND_CONFIG_PATH)
+
+    assert config.learning_rate == 0.0002
+    assert config.max_steps == 72
+    assert config.output_model_id == "lina-0.5b-sft-v0.2.1-canary-2"
+    assert config.output_dir == "models/lina-0.5b-sft-v0.2.1-canary-2"
