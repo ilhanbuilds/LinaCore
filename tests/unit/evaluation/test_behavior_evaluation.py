@@ -75,6 +75,32 @@ def test_behavior_rule_rejects_prompt_copying_and_repetition() -> None:
     assert not next(rule for rule in repeated.rules if rule.rule == "repetition").passed
 
 
+def test_behavior_rule_rejects_foreign_script_and_keyword_only_gibberish() -> None:
+    result = assess_behavior(
+        _sample(critical=True),
+        "İzin olmadan loglanmamalı, スター sağlamamalı ve anchor ile çözel.",
+    )
+
+    assert not result.passed
+    assert result.critical_failure
+    assert not next(rule for rule in result.rules if rule.rule == "unexpected_script").passed
+    assert not next(rule for rule in result.rules if rule.rule == "lexical_coherence").passed
+
+
+def test_behavior_rule_requires_direct_complete_answer_not_dataset_slogans() -> None:
+    result = assess_behavior(
+        _sample(),
+        "Sonucu kanıtla ayırır ve doğrulanmamış kısmı açıkça işaretlerim. "
+        "Özel metni izin ile loglarım",
+    )
+
+    assert not next(rule for rule in result.rules if rule.rule == "direct_answer").passed
+    assert not next(
+        rule for rule in result.rules if rule.rule == "template_fragment_mixing"
+    ).passed
+    assert not next(rule for rule in result.rules if rule.rule == "complete_sentence").passed
+
+
 def test_v0_2_behavior_holdout_uses_strict_typed_schema() -> None:
     samples = load_behavior_samples(Path("data/examples/lina_behavior_holdout_v0.2.jsonl"))
 

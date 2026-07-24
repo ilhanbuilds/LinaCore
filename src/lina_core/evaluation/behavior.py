@@ -30,6 +30,21 @@ _TURKISH_WORDS = frozenset(
         "veya",
     }
 )
+_ENGLISH_FUNCTION_WORDS = frozenset(
+    {"and", "are", "for", "from", "is", "not", "of", "that", "the", "this", "to", "with"}
+)
+_UNEXPECTED_SCRIPT_NAMES = ("CYRILLIC", "HIRAGANA", "KATAKANA", "HANGUL", "CJK")
+_GENERIC_TEMPLATE_FRAGMENTS = tuple(
+    normalize
+    for normalize in (
+        "sonucu kanıtla ayırır",
+        "doğrulanmamış kısmı açıkça işaretlerim",
+        "kararı mevcut kanıta dayandırır",
+        "gerekli ayrıntıyı veririm",
+        "kritik hatalara öncelik",
+        "önce kapsamı netleştirir",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +165,10 @@ def assess_behavior(sample: BehaviorSample, output: str) -> BehaviorAssessment:
     normalized_output = normalize_text(output)
     normalized_prompt = normalize_text(sample.prompt)
     words = normalized_output.split()
+    direct_answer = _answers_directly(sample, output)
+    template_fragments = sum(
+        normalize_text(fragment) in normalized_output for fragment in _GENERIC_TEMPLATE_FRAGMENTS
+    )
     rules = [
         RuleResult("non_empty", bool(normalized_output), "Çıktı boş olmamalı."),
         RuleResult(
@@ -179,6 +198,46 @@ def assess_behavior(sample: BehaviorSample, output: str) -> BehaviorAssessment:
             ),
             "Her gerekli kavram grubundan en az biri bulunmalı.",
         ),
+        RuleResult(
+            "direct_answer",
+            direct_answer,
+            "İlk cümle gerekli kavramlardan en az biriyle soruyu doğrudan yanıtlamalı.",
+        ),
+        RuleResult(
+            "unexpected_script",
+            not _has_unexpected_script(output),
+            "Beklenmeyen Latin dışı script bulunmamalı.",
+        ),
+        RuleResult(
+            "unicode_integrity",
+            "�" not in output and not any(unicodedata.category(char) == "Cs" for char in output),
+            "Bozuk veya replacement Unicode karakteri bulunmamalı.",
+        ),
+        RuleResult(
+            "template_fragment_mixing",
+            template_fragments <= 1,
+            "Birden fazla genel dataset sloganı aynı cevapta karışmamalı.",
+        ),
+        RuleResult(
+            "generic_slogan_response",
+            template_fragments == 0 or direct_answer,
+            "Genel slogan, doğrudan cevap yerine geçmemeli.",
+        ),
+        RuleResult(
+            "malformed_punctuation",
+            _punctuation_is_balanced(output),
+            "Parantez, köşeli ayraç, tırnak ve code fence dengeli olmalı.",
+        ),
+        RuleResult(
+            "complete_sentence",
+            _ends_as_sentence(output),
+            "Çıktı tamamlanmış bir cümle veya code block ile bitmeli.",
+        ),
+        RuleResult(
+            "lexical_coherence",
+            _has_minimum_lexical_coherence(output),
+            "Çıktı yeterli sözcük ve harf bütünlüğü taşımalı.",
+        ),
     ]
     if sample.normalized_answers:
         rules.append(
@@ -194,6 +253,13 @@ def assess_behavior(sample: BehaviorSample, output: str) -> BehaviorAssessment:
                 "turkish_language",
                 _looks_turkish(words, output),
                 "Türkçe karakter veya yaygın Türkçe işlev sözcüğü bulunmalı.",
+            )
+        )
+        rules.append(
+            RuleResult(
+                "turkish_code_switching",
+                _turkish_code_switching_is_limited(words),
+                "Türkçe cevapta aşırı İngilizce işlev sözcüğü kullanılmamalı.",
             )
         )
     passed_count = sum(rule.passed for rule in rules)
@@ -317,3 +383,52 @@ def _looks_turkish(words: list[str], original: str) -> bool:
     if any(character in original.casefold() for character in "çğıöşü"):
         return True
     return bool(_TURKISH_WORDS.intersection(words))
+
+
+def _answers_directly(sample: BehaviorSample, output: str) -> bool:
+    first_sentence = re.split(r"[.!?\n]", output, maxsplit=1)[0]
+    normalized = normalize_text(first_sentence)
+    return bool(normalized) and any(
+        normalize_text(term) in normalized
+        for alternatives in sample.required_concepts
+        for term in alternatives
+    )
+
+
+def _has_unexpected_script(value: str) -> bool:
+    return any(
+        marker in unicodedata.name(character, "")
+        for character in value
+        for marker in _UNEXPECTED_SCRIPT_NAMES
+    )
+
+
+def _punctuation_is_balanced(value: str) -> bool:
+    pairs = (("(", ")"), ("[", "]"), ("{", "}"))
+    return all(value.count(left) == value.count(right) for left, right in pairs) and (
+        value.count("```") % 2 == 0
+    )
+
+
+def _ends_as_sentence(value: str) -> bool:
+    stripped = value.rstrip()
+    return bool(stripped) and (
+        stripped.endswith((".", "!", "?", ":", ";", "```"))
+        or stripped[-1] in ")]}`"
+    )
+
+
+def _has_minimum_lexical_coherence(value: str) -> bool:
+    tokens = re.findall(r"\b\w+\b", value, flags=re.UNICODE)
+    visible = [character for character in value if not character.isspace()]
+    letter_ratio = (
+        0.0 if not visible else sum(character.isalpha() for character in visible) / len(visible)
+    )
+    return len(tokens) >= 3 and letter_ratio >= 0.45 and not _has_unexpected_script(value)
+
+
+def _turkish_code_switching_is_limited(words: list[str]) -> bool:
+    if not words:
+        return False
+    english = sum(word in _ENGLISH_FUNCTION_WORDS for word in words)
+    return english <= max(2, round(len(words) * 0.15))
