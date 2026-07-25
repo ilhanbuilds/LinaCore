@@ -1,4 +1,5 @@
 from dataclasses import replace
+from pathlib import Path
 
 from lina_core.evaluation.behavior import BehaviorSample, compare_behavior_models
 from lina_core.evaluation.curriculum import (
@@ -10,6 +11,7 @@ from lina_core.inference.request import InferenceRequest
 from lina_core.inference.response import InferenceResponse, TokenUsage
 from lina_core.models.metadata import ModelMetadata
 from lina_core.models.mock import MockModelProvider
+from scripts.evaluate_lina_recovery_curriculum import select_samples
 
 
 class BehaviorProviderDouble(MockModelProvider):
@@ -97,3 +99,19 @@ def test_human_review_pack_contains_required_review_fields() -> None:
     assert "Dil sorunu:" in rendered
     assert "Doğrudan cevap:" in rendered
     assert "İnsan yorumu:" in rendered
+
+
+def test_curriculum_holdout_selection_is_fixed_and_disjoint_by_stage() -> None:
+    holdout = Path("data/evaluation/lina_recovery_holdout_v0.3.jsonl")
+
+    stage_one = select_samples(holdout, 1)
+    stage_two = select_samples(holdout, 2)
+
+    assert len(stage_one) == 8
+    assert len(stage_two) == 15
+    assert {sample.category for sample in stage_one} == {
+        "identity",
+        "secret_safety",
+        "file_access_honesty",
+        "missing_information",
+    }

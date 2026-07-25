@@ -79,3 +79,35 @@ def test_curriculum_configs_are_local_bounded_and_conservative() -> None:
     assert stage_one.local_files_only and not stage_one.allow_download
     assert stage_two.local_files_only and not stage_two.allow_download
     assert stage_one.output_dir != stage_two.output_dir
+
+
+def test_second_stage_one_attempt_changes_only_training_intensity() -> None:
+    first = load_training_config(
+        Path("configs/training/lina-0.5b-sft-v0.2.1-natural-stage1.toml")
+    )
+    second = load_training_config(
+        Path("configs/training/lina-0.5b-sft-v0.2.1-natural-stage1-2.toml")
+    )
+
+    assert second.max_steps == 96
+    assert second.gradient_accumulation_steps == 2
+    assert second.learning_rate == first.learning_rate
+    assert second.lora_r == first.lora_r
+    assert second.dataset_path == first.dataset_path
+    assert second.output_dir != first.output_dir
+
+
+def test_final_stage_one_attempt_changes_lr_and_lora_capacity() -> None:
+    second = load_training_config(
+        Path("configs/training/lina-0.5b-sft-v0.2.1-natural-stage1-2.toml")
+    )
+    final = load_training_config(
+        Path("configs/training/lina-0.5b-sft-v0.2.1-natural-stage1-3.toml")
+    )
+
+    assert final.learning_rate == 0.0001
+    assert (final.lora_r, final.lora_alpha) == (16, 32)
+    assert final.max_steps == second.max_steps
+    assert final.gradient_accumulation_steps == second.gradient_accumulation_steps
+    assert final.dataset_path == second.dataset_path
+    assert final.output_dir != second.output_dir
