@@ -97,6 +97,12 @@ Her canary için manifest `available/valid`, model card mevcut, diskten reload v
 inference başarılıdır. Checksum dosyalarındaki tüm girdiler yeniden hesaplandı ve
 uyuşmazlık bulunmadı.
 
+Son canary'nin best-step unmerged LoRA checkpoint'i ile merged artifact'i aynı
+prompt üzerinde ayrıca karşılaştırıldı. İlk-token logit maksimum mutlak farkı
+`5.2184e-05` ile `1e-4` toleransının altında kaldı; argmax, ilk 10 generation
+token'ı, decoded çıktı, dtype ve tokenizer hash'i aynıydı. Merge equivalence
+kapısı geçti.
+
 Son canary:
 
 - Artifact: `models/lina-0.5b-sft-v0.2.1-natural-stage1-3`
@@ -104,8 +110,9 @@ Son canary:
 - Model card: `models/lina-0.5b-sft-v0.2.1-natural-stage1-3/MODEL_CARD.md`
 
 Bu canary'ler araştırma çıktısıdır; Git'e eklenmez ve production-ready değildir.
-Tam model üretilmediği için full holdout, Stage 2 canlı 15-prompt kapısı ve nihai
-unmerged/merged kalite eşdeğerliği uygulanabilir değildir.
+Tam model üretilmediği için full holdout ve Stage 2 canlı 15-prompt kapısı
+uygulanabilir değildir; merge eşdeğerliği yalnız son Stage 1 canary üzerinde
+doğrulandı.
 
 ## Bilinen sınırlamalar ve sonraki yön
 
