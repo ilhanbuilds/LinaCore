@@ -2,7 +2,7 @@
 
 **Lina ekosistemi için local-first, typed ve modüler yapay zekâ runtime’ı ve model geliştirme altyapısı.**
 
-[![CI](https://github.com/ilhanki/LinaCore/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ilhanki/LinaCore/actions/workflows/ci.yml)
+[![CI](https://github.com/ilhanbuilds/LinaCore/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ilhanki/LinaCore/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.3.0a0-orange)](https://github.com/ilhanki/LinaCore)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
