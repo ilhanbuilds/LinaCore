@@ -341,6 +341,7 @@ Tarih veya teslim garantisi verilmez; tamamlanmamış maddeler mevcut özellik o
 Geliştirme ortamı, kod/dil standardı ve doğrulama zinciri için
 [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını okuyun. Hata raporlarında model ağırlığı, private
 dataset, credential veya kişisel veri paylaşmayın.
+Hata bildirimleri ve özellik önerileri için [GitHub Issues](https://github.com/ilhanbuilds/LinaCore/issues) sayfasını kullanabilirsiniz.
 
 ## Lisans
 
